@@ -1,0 +1,27 @@
+import { z } from 'zod';
+const id=z.string().min(1).max(160);
+const text=z.string().max(300000);
+const algorithm=z.enum(['fsrs7','fsrs6','sm2','leitner']);
+const deck=z.object({id,name:z.string().min(1).max(160),description:text,color:z.string().regex(/^#[a-fA-F0-9]{6}$/),icon:z.string().max(40),retention:z.number().min(.7).max(.97),algorithm,newPerDay:z.number().int().min(0).max(500)});
+const card=z.object({id,deckId:id,title:z.string().max(300),type:z.enum(['basic','input','cloze']),front:text,back:text,notes:text,aliases:z.array(z.string().max(500)).max(100),tags:z.array(z.string().max(80)).max(50),clozeIndex:z.number().int().min(1).max(99).optional(),siblingId:id.optional(),resetMemory:z.boolean().optional()});
+const goal=z.object({id,name:z.string().min(1).max(160),date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),minutes:z.number().min(1).max(720),retention:z.number().min(.7).max(.97),deckIds:z.array(id).min(1).max(300),importance:z.record(z.string(),z.number().min(.1).max(10)),newPerDay:z.number().int().min(0).max(100000).nullable().optional()});
+const settings=z.object({minutes:z.number().int().min(1).max(720),newPerDay:z.number().int().min(0).max(500),theme:z.enum(['light','dark','system']),timeZone:z.string().min(1).max(100),dayStartsAt:z.number().int().min(0).max(12),inputMode:z.enum(['auto-short','manual']),burySiblings:z.boolean()}).refine(s=>{try{new Intl.DateTimeFormat('en',{timeZone:s.timeZone});return true;}catch{return false;}},'Unknown timezone');
+const review=z.object({cardId:id,cardVersion:id,rating:z.union([z.literal(1),z.literal(2),z.literal(3),z.literal(4)]),elapsedDays:z.number().min(0).max(100000),durationMs:z.number().min(0).max(86400000),context:z.enum(['review','practice','exam']),hints:z.boolean(),model:id,paramsId:id,retention:z.number().min(.7).max(.97),prediction:z.number().min(0).max(1).nullable(),previousReviewIds:z.array(id).max(128),sessionId:id});
+const introduction=z.object({cardId:id,cardVersion:id,durationMs:z.number().min(0).max(86400000),context:z.enum(['review','practice']),sessionId:id});
+const FSRS7_BOUNDS=[[.0001,50],[.0001,100],[.0001,100],[.0001,100],[1,10],[.001,4],[.1,4],[0,4],[0,1.2],[.3,3],[.01,1.5],[.1,1],[0,3.5],[0,1],[1,7],[0,4],[0,2],[.5,6],[.001,1.5],[.001,1],[0,5],[0,1],[1,7],[.01,.25],[.01,.95],[.2,.85],[.5,.99],[.01,1],[.1,1],[0,.9],[.1,1.1],[0,1],[0,.6],[0,.6]];
+const FSRS6_BOUNDS=[[.0001,100],[.0001,100],[.0001,100],[.0001,100],[1,10],[.001,4],[.001,10],[0,1],[0,10],[0,4],[0,4],[.001,10],[0,4],[0,4],[0,10],[0,1],[1,10],[0,2],[0,2],[0,1],[.01,.95]];
+const params=z.object({id,algorithm:z.enum(['fsrs7','fsrs6']),values:z.array(z.number().finite().min(0).max(1000)),trainedAt:z.number().finite(),trainingCount:z.number().int().min(1),testCount:z.number().int().min(1),trainCutoff:z.number().finite(),defaultLoss:z.number().finite().min(0),fittedLoss:z.number().finite().min(0)}).refine(p=>{const b=p.algorithm==='fsrs7'?FSRS7_BOUNDS:FSRS6_BOUNDS;return p.values.length===b.length&&p.values.every((v,i)=>v>=b[i][0]&&v<=b[i][1])&&(p.algorithm!=='fsrs7'||(p.values.slice(1,4).every((v,i)=>v>=p.values[i])&&p.values[26]>=p.values[25]));},'Parameters outside supported model bounds');
+const payloads={'deck.put':deck,'deck.delete':z.object({permanent:z.boolean().optional()}),'card.put':card,'card.delete':z.object({permanent:z.boolean().optional()}),'card.restore':card,'goal.put':goal,'goal.delete':z.object({}),'settings.put':settings,'study.introduce':introduction,'review':review,'review.undo':z.object({reviewId:id}),'model.parameters':params};
+export const EventSchema=z.object({id,deviceId:id,seq:z.number().int().min(1).max(1e12),clock:z.number().int().min(1).max(1e12),deps:z.array(id).max(128),at:z.number().finite().min(0).max(1e15),kind:z.enum(Object.keys(payloads)),entityId:id,payload:z.record(z.string(),z.unknown())}).superRefine((e,ctx)=>{
+ const parsed=payloads[e.kind].safeParse(e.payload);
+ if(!parsed.success)ctx.addIssue({code:'custom',message:'Invalid '+e.kind+' payload: '+parsed.error.message});
+ if(e.deps.includes(e.id)||new Set(e.deps).size!==e.deps.length)ctx.addIssue({code:'custom',message:'Invalid dependencies'});
+ if(e.payload.id!==undefined&&e.payload.id!==e.entityId)ctx.addIssue({code:'custom',message:'Entity id mismatch'});
+ if(['review','study.introduce'].includes(e.kind)&&e.payload.cardId!==e.entityId)ctx.addIssue({code:'custom',message:'Card id mismatch'});
+});
+export function validateEvents(events){if(!Array.isArray(events)||events.length>100000)throw new Error('Некорректный журнал изменений');return events.map(e=>EventSchema.parse(e));}
+export function canonical(value){if(Array.isArray(value))return '['+value.map(canonical).join(',')+']';if(value&&typeof value==='object')return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical(value[k])).join(',')+'}';return JSON.stringify(value);}
+export function cursorOf(events){const groups=new Map();for(const e of events){if(!groups.has(e.deviceId))groups.set(e.deviceId,new Set());groups.get(e.deviceId).add(e.seq);}const out={};for(const [device,seqs]of groups){let n=0;while(seqs.has(n+1))n++;out[device]=n;}return out;}
+export function assetIds(events){const ids=new Set();for(const e of events)for(const key of ['front','back','notes']){const value=e.payload[key];if(typeof value==='string')for(const m of value.matchAll(/asset:([a-f0-9]{64})/g))ids.add(m[1]);}return [...ids];}
+
+

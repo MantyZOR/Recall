@@ -1,0 +1,33 @@
+# Installed dependencies and build toolchains
+node_modules/
+tools/
+# Generated application, packages and test reports
+dist/
+out/
+tmp/
+playwright-report/
+test-results/
+*.tsbuildinfo
+*.log
+# Personal data, local credentials and certificates
+data/
+certs/
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-*
+*.recall.zip
+*.key
+*.pem
+*.pfx
+# Generated local shortcuts
+*.lnk
+/Recall.exe
+# Editors and OS
+.DS_Store
+Thumbs.db
+.vscode/
+.codex/
+.agents/
+.aws/

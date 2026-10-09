@@ -1,0 +1,2 @@
+import { defineConfig } from '@playwright/test';
+export default defineConfig({testDir:'tests/e2e',fullyParallel:false,workers:1,timeout:90000,expect:{timeout:10000},reporter:[['list'],['html',{open:'never'}]],use:{baseURL:'http://localhost:17887',viewport:{width:1440,height:1000},trace:'retain-on-failure',screenshot:'only-on-failure'},webServer:{command:'node scripts/test-server.mjs',url:'http://localhost:17887/api/health',reuseExistingServer:false,timeout:30000}});

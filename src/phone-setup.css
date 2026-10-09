@@ -1,0 +1,6 @@
+.phone-platform{display:flex;max-width:350px;margin:0 0 24px}
+.phone-platform button{flex:1;min-height:44px}
+.phone-setup .setup-step p,.phone-reinstall p{overflow-wrap:anywhere}
+.phone-setup a{max-width:100%;overflow-wrap:anywhere}
+.phone-setup .section-title{flex-wrap:wrap}
+@media(max-width:560px){.phone-platform{max-width:none}.phone-platform button{font-size:1rem}.phone-setup .setup-step{gap:12px}.phone-setup .setup-step>div{min-width:0}}

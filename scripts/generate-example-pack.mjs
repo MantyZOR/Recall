@@ -1,0 +1,15 @@
+import sharp from 'sharp';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { zipSync, strToU8 } from 'fflate';
+import { parseMarkdown } from '../src/domain/markdown.ts';
+const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400"><rect width="640" height="400" rx="28" fill="#f6f4f0"/><rect x="145" y="95" width="350" height="240" rx="8" fill="#eeecff" stroke="#6b5ad2" stroke-width="4"/><path d="M145 335L495 95" stroke="#6b5ad2" stroke-width="4" stroke-dasharray="10 8"/><g font-family="Arial,sans-serif" font-size="32" text-anchor="middle" fill="#29253c"><text x="320" y="73">4</text><text x="113" y="227">3</text><text x="337" y="225" fill="#6b5ad2">?</text></g><g stroke="#6b5ad2" stroke-width="3" fill="none"><path d="M145 313h22v22"/><path d="M473 95v22h22"/></g></svg>';
+const image = await sharp(Buffer.from(svg)).png().toBuffer();
+const extra = '\n\n## [basic] Диагональ прямоугольника\nНайди длину диагонали прямоугольника со сторонами 3 и 4.\n![Прямоугольник](attachments/rectangle.png)\n:::answer\n$5$, поскольку $\\sqrt{3^2+4^2}=5$.\n:::notes\nТеорема Пифагора: квадрат гипотенузы равен сумме квадратов катетов.\n:::tags\nматематика, изображение\n';
+const source = readFileSync('examples/starter.md','utf8').replace(/^\uFEFF/,'').trim()+extra;
+const parsed = parseMarkdown(source);
+if(parsed.errors.length)throw Error(parsed.errors.join('\n'));
+mkdirSync('examples/attachments',{recursive:true});
+writeFileSync('examples/attachments/rectangle.png',image);
+writeFileSync('examples/cards.md',source);
+writeFileSync('examples/illustrated.cards.zip',zipSync({'cards.md':strToU8(source),'attachments/rectangle.png':new Uint8Array(image)},{level:6}));
+console.log('Готов пример: examples/illustrated.cards.zip — '+parsed.cards.length+' карточек, включая картинку.');
