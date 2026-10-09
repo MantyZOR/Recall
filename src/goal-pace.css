@@ -18,6 +18,22 @@
 .goal-pace-input-hint{margin:-6px 0 20px;line-height:1.75}
 .goal-form select,.goal-form input[type=number]{min-width:0;max-width:100%;width:100%;box-sizing:border-box}
 .goal-form>label{min-width:0}
+.goal-help{border:1px solid var(--line);border-radius:10px;background:var(--surface);margin:0 0 20px;min-width:0}
+.goal-help>summary,.goal-plan-details>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;font-size:.875rem;font-weight:600;line-height:1.5;list-style:none;cursor:pointer;color:var(--primary)}
+.goal-help>summary{padding:12px 16px}
+.goal-help>summary::-webkit-details-marker,.goal-plan-details>summary::-webkit-details-marker{display:none}
+.goal-help>summary>svg,.goal-plan-details>summary>svg{flex-shrink:0;transition:transform .15s}
+.goal-help[open]>summary>svg,.goal-plan-details[open]>summary>svg{transform:rotate(180deg)}
+.goal-help>summary:focus-visible,.goal-plan-details>summary:focus-visible{outline:2px solid var(--primary);outline-offset:3px;border-radius:6px}
+.goal-help>div{padding:0 16px 16px}
+.goal-help p{margin:8px 0 0}
+.goal-plan-details{border-top:1px solid var(--line);margin-top:18px;min-width:0}
+.goal-plan-details>summary{padding:10px 0}
+.goal-plan-details .goal-pace-details{margin:6px 0 16px}
+.goal-card .goal-topics{margin:16px 0 18px}
+.goal-card .goal-metrics{gap:14px;margin-bottom:18px}
+.goal-card .goal-card-actions{margin-top:16px}
+.goal-card .study-plan-status{margin:16px 0}
 .goal-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
 .goal-metrics>div{min-width:0;overflow-wrap:anywhere}
 @media(max-width:560px){

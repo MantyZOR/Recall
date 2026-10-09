@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Plus, ArrowRight, Settings2, Download, Search, Trash2, RotateCcw, FileInput, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Plus, ArrowRight, Settings2, Download, Search, Trash2, RotateCcw, FileInput, CheckCircle2, AlertTriangle, BookOpen, Repeat2 } from 'lucide-react';
 import type { Snapshot, Deck, CardView, Card } from '../domain/types';
 import { MODEL_NAMES } from '../domain/types';
 import { activeCards, deletedDecks, entityHeads } from '../domain/reducer';
@@ -55,13 +55,16 @@ export function Decks({s,newDeck,edit,open,start,practice,importCards,notify}:{s
   <div className="deck-grid">{s.decks.map(d=>{
    const own=cards.filter(c=>c.deckId===d.id),plan=studyPlan(s,[d.id]),ready=plan.ready,learned=own.filter(c=>c.memory).length;
    return <article className="deck-tile" key={d.id}>
-    <div className="deck-tile-top"><span className="deck-icon" style={{color:d.color,background:d.color+'18'}}>{d.icon}</span><div className="deck-tile-controls"><button className="icon-button" aria-label={'Настройки '+d.name} onClick={()=>edit(d)}><Settings2 size={18}/></button><button className="icon-button danger-control" aria-label={'Удалить '+d.name} title="Удалить колоду" onClick={()=>setRemoving(d)}><Trash2 size={18}/></button></div></div>
+    <div className="deck-tile-top"><span className="deck-icon" style={{color:d.color,background:d.color+'18'}}>{d.icon}</span><div className="deck-tile-controls"><button className="icon-button" aria-label={'Экспорт '+d.name} title="Markdown и изображения" onClick={()=>exportDeckPack(d,own).catch(e=>notify(e.message,true))}><Download size={18}/></button><button className="icon-button" aria-label={'Настройки '+d.name} onClick={()=>edit(d)}><Settings2 size={18}/></button><button className="icon-button danger-control" aria-label={'Удалить '+d.name} title="Удалить колоду" onClick={()=>setRemoving(d)}><Trash2 size={18}/></button></div></div>
     <button className="deck-name" onClick={()=>open(d.id)}>{d.name}</button><p>{d.description||'Добавь описание этой темы'}</p>
     <div className="deck-tile-count"><strong>{own.length}</strong><span>карточек</span><span className="model-tag">{MODEL_NAMES[d.algorithm]}</span></div>
     <Progress value={own.length?learned/own.length*100:0} color={d.color}/><div className="tile-meta"><span>{learned} знакомых</span><span>Цель {Math.round(d.retention*100)}%</span></div>
     <StudyStatus plan={plan} timeZone={s.settings.timeZone} compact/>
-    <div className="deck-tile-actions"><Button kind={ready?'primary':'secondary'} disabled={!ready} onClick={()=>start([d.id])}>{ready?'Повторить '+ready:studyEmptyLabel(plan)}<ArrowRight size={15}/></Button><button className="icon-button" aria-label={'Экспорт '+d.name} title="Markdown и изображения" onClick={()=>exportDeckPack(d,own).catch(e=>notify(e.message,true))}><Download size={18}/></button></div>
-    <div className="deck-study-actions"><button className="tile-open text-button" onClick={()=>open(d.id)}>Открыть карточки</button><button className="text-button" disabled={!own.length} onClick={()=>practice(d)}>Практика всей колоды</button></div>
+    <div className="deck-tile-actions">
+     <Button kind={ready?'primary':'secondary'} disabled={!ready} onClick={()=>start([d.id])}>{ready?'Повторить '+ready:studyEmptyLabel(plan)}<ArrowRight size={15}/></Button>
+     <Button kind="secondary" onClick={()=>open(d.id)}><BookOpen size={16}/>Открыть карточки</Button>
+     <Button kind="secondary" disabled={!own.length} onClick={()=>practice(d)}><Repeat2 size={16}/>Практика всей колоды</Button>
+    </div>
    </article>;
   })}</div>}
   {purging&&<Dialog title="Удалить колоду навсегда?" onClose={()=>{if(!busy)setPurging(null);}}><div className="form-body deck-delete-info"><p>Колода «<strong>{purging.name}</strong>» и все её карточки будут удалены навсегда, включая карточки в корзине.</p><p>Карточек к удалению: <strong>{s.cards.filter(c=>c.deckId===purging.id&&!c.purged).length}</strong>.</p><p>Восстановить их через корзину будет нельзя. Статистика ответов сохранится. Старые архивы и резервные копии останутся.</p><p>Удаление передаётся на второе устройство при синхронизации. Колода перестанет участвовать в обучении и связанных целях.</p></div><footer className="dialog-footer"><Button kind="secondary" disabled={busy} onClick={()=>setPurging(null)}>Отмена</Button><Button kind="danger" disabled={busy} onClick={purge}><Trash2 size={16}/>{busy?'Удаляем…':'Удалить навсегда'}</Button></footer></Dialog>}

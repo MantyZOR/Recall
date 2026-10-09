@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Target, CalendarDays, ArrowRight, Pencil, Trash2, FlaskConical, AlertTriangle } from 'lucide-react';
+import { Plus, Target, CalendarDays, ArrowRight, Pencil, Trash2, FlaskConical, AlertTriangle, ChevronDown } from 'lucide-react';
 import type { Goal, Snapshot, Context } from '../domain/types';
 import { goalForecast } from '../domain/planner';
 import { entityHeads } from '../domain/reducer';
@@ -13,9 +13,9 @@ import { Button, PageHeader, Dialog, Empty, Progress, formatDate } from './commo
 type Props={s:Snapshot;start:(g:Goal,c:Context)=>void;practice:(g:Goal)=>void;notify:(m:string,e?:boolean)=>void;};
 type Forecast=ReturnType<typeof goalForecast>;
 
-function PaceDetails({f}:{f:Forecast}){
+function PaceDetails({f,today=true}:{f:Forecast;today?:boolean}){
  return <div className="goal-pace-details">
-  <p><strong>На сегодня ещё {Math.min(f.fresh.length,f.remainingToday)} новых</strong><span>Осталось новых: {f.fresh.length} · впервые изучено сегодня: {f.introducedToday}</span></p>
+  <p>{today&&<strong>На сегодня ещё {Math.min(f.fresh.length,f.remainingToday)} новых</strong>}<span>Осталось новых: {f.fresh.length} · впервые изучено сегодня: {f.introducedToday}</span></p>
   {f.learning.length>0&&<p>Прочитано, но ещё без первой оценки: {f.learning.length}. Эти карточки доступны сверх темпа новых.</p>}
   {f.newCount>0&&<p>До даты можно запланировать первую проверку для {f.newByDeadline} из {f.newCount} ещё не оценённых карточек.</p>}
  </div>;
@@ -28,19 +28,23 @@ export function Goals({s,start,practice,notify}:Props){
  const remove=async(g:Goal)=>{try{await append('goal.delete',g.id,{},entityHeads(s.events,g.id,'goal.').map(e=>e.id));notify('Цель убрана. Карточки и история сохранены.');}catch(e){notify((e as Error).message,true);}};
  return <>
   <PageHeader eyebrow="ПОДГОТОВКА К ДАТЕ" title="Держи цель в поле зрения." description="Выбери важное и найди реалистичный ритм подготовки."><Button disabled={!s.decks.length} onClick={()=>setEditor(null)}><Plus size={17}/>Добавить цель</Button></PageHeader>
+  {s.goals.length>0&&<details className="goal-help"><summary>Как работают цели<ChevronDown size={16}/></summary><div>
+    <p className="goal-pace-scope">Темп действует по кнопке «Учиться по цели». В «Сегодня» и отдельных колодах используются обычные дневные лимиты. Уже введённые сегодня карточки выбранных колод учитываются в обоих режимах.</p>
+    <p className="model-disclaimer">Сегодня и выбранная дата включены в план. До этой даты колоды используют целевой процент памяти. При нескольких целях действует самый высокий процент. Прогноз учитывает скорость чтения и ответов, а будущие ответы считает успешными. Первое знакомство со всеми карточками ещё не означает, что они запомнились.</p>
+  </div></details>}
   {!s.goals.length?<Empty title="Преврати дату в понятный план" description={s.decks.length?'Экзамен, собеседование или личный рубеж. Выбери темы и минуты в день.':'Сначала создай колоды с материалом, затем добавь цель.'}><Button disabled={!s.decks.length} onClick={()=>setEditor(null)}><Target size={16}/>Создать цель</Button></Empty>:<div className="goals-list">{s.goals.map(g=>{
    const f=goalForecast(s,g),plan=goalStudyPlan(s,g);
    return <article key={g.id} className="goal-card">
     <div className="goal-card-header"><span className="metric-icon lavender"><Target size={22}/></span><div><h2>{g.name}</h2><p><CalendarDays size={14}/>{formatDate(g.date)} · дней на подготовку: {f.days}</p></div><button className="icon-button" aria-label={'Изменить '+g.name} onClick={()=>setEditor(g)}><Pencil size={17}/></button><button className="icon-button" aria-label={'Убрать '+g.name} onClick={()=>remove(g)}><Trash2 size={17}/></button></div>
     <div className="goal-topics">{s.decks.filter(d=>g.deckIds.includes(d.id)).map(d=><span key={d.id} style={{color:d.color,background:d.color+'18'}}>{d.name}{(g.importance[d.id]||1)>1?' · приоритет':''}</span>)}</div>
     <div className="goal-metrics"><div><strong>{f.selected.length}</strong><span>карточек в плане</span></div><div><strong>{g.minutes}<small> мин</small></strong><span>доступно в день</span></div><div className="goal-pace-metric"><strong>{f.newPerDay}</strong><span>новых в день · {f.automatic?'авто':'вручную'}</span><button className="text-button" onClick={()=>setEditor(g)}>Изменить темп</button></div><div><strong>{Math.round(g.retention*100)}%</strong><span>целевая память</span></div></div>
-    <PaceDetails f={f}/>
     <StudyStatus plan={plan} timeZone={s.settings.timeZone} goal/>
-    <div className="goal-estimate"><div><span>Оценка охвата по времени</span><strong>{Math.round(f.budgetCoverage*100)}%</strong></div><Progress value={f.budgetCoverage*100}/><small>Около {f.estimatedMinutes} мин на изучение и повторения · доступно {f.availableMinutes} мин до даты</small>{f.days>0&&<p className="goal-time-needed">Ориентир по времени: <strong>{f.requiredMinutesPerDay} мин в день</strong></p>}</div>
     <PlanWarnings f={f}/>
-    <p className="goal-pace-scope">Темп действует по кнопке «Учиться по цели». В «Сегодня» и отдельных колодах используются обычные дневные лимиты. Уже введённые сегодня карточки выбранных колод учитываются в обоих режимах.</p>
-    <p className="model-disclaimer">Сегодня и выбранная дата включены в план. До этой даты колоды используют целевой процент памяти. При нескольких целях действует самый высокий процент. Прогноз учитывает скорость чтения и ответов, а будущие ответы считает успешными. Первое знакомство со всеми карточками ещё не означает, что они запомнились.</p>
-    <div className="goal-card-actions"><Button disabled={!plan.ready} onClick={()=>start(g,'review')}>Учиться по цели<span className="goal-ready-badge" aria-hidden="true">{plan.ready}</span><ArrowRight size={16}/></Button><Button kind="secondary" disabled={!f.selected.length} onClick={()=>practice(g)}>Практика всех карточек</Button><Button kind="ghost" disabled={!f.selected.length} onClick={()=>start(g,'exam')}><FlaskConical size={16}/>Пробная проверка</Button></div>
+    <div className="goal-card-actions"><Button disabled={!plan.ready} onClick={()=>start(g,'review')}>Учиться по цели<ArrowRight size={16}/></Button><Button kind="secondary" disabled={!f.selected.length} onClick={()=>practice(g)}>Практика всех карточек</Button><Button kind="ghost" disabled={!f.selected.length} onClick={()=>start(g,'exam')}><FlaskConical size={16}/>Пробная проверка</Button></div>
+    <details className="goal-plan-details"><summary>Детали плана и прогноз<ChevronDown size={16}/></summary>
+     <PaceDetails f={f} today={false}/>
+    <div className="goal-estimate"><div><span>Оценка охвата по времени</span><strong>{Math.round(f.budgetCoverage*100)}%</strong></div><Progress value={f.budgetCoverage*100}/><small>Около {f.estimatedMinutes} мин на изучение и повторения · доступно {f.availableMinutes} мин до даты</small>{f.days>0&&<p className="goal-time-needed">Ориентир по времени: <strong>{f.requiredMinutesPerDay} мин в день</strong></p>}</div>
+    </details>
    </article>;
   })}</div>}
   {editor!==false&&<GoalEditor key={editor?.id||'new'} s={s} base={editor||undefined} onClose={()=>setEditor(false)} notify={notify}/>}
