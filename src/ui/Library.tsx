@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Plus, ArrowRight, Settings2, Download, Search, Trash2, RotateCcw, FileInput, CheckCircle2, AlertTriangle, BookOpen, Repeat2 } from 'lucide-react';
+import { Plus, ArrowRight, Settings2, Download, Search, Trash2, RotateCcw, FileInput, CheckCircle2, AlertTriangle, BookOpen, Repeat2, Eye } from 'lucide-react';
 import type { Snapshot, Deck, CardView, Card } from '../domain/types';
 import { MODEL_NAMES } from '../domain/types';
 import { activeCards, deletedDecks, entityHeads } from '../domain/reducer';
@@ -10,6 +10,8 @@ import { exportDeckPack, exportTSV } from '../storage/archive';
 import { cardData, saveDeck, purgeCards, purgeDeck } from '../domain/actions';
 import { clozeDisplay } from '../domain/markdown';
 import { Markdown } from './Markdown';
+import { CardReader } from './CardReader';
+import { attentionByCard } from '../domain/attention';
 import { Button, PageHeader, Empty, Dialog, Progress, cleanText, formatCount, formatDate } from './common';
 type Notify=(text:string,error?:boolean)=>void;
 export function Decks({s,newDeck,edit,open,start,practice,importCards,notify}:{s:Snapshot;newDeck:()=>void;edit:(d:Deck)=>void;open:(id:string)=>void;start:(ids:string[])=>void;practice:(d:Deck)=>void;importCards:()=>void;notify:Notify}){
@@ -74,6 +76,8 @@ export function Decks({s,newDeck,edit,open,start,practice,importCards,notify}:{s
 
 export function Library({s,deckFilter,setDeckFilter,newCard,edit,importCards,notify}:{s:Snapshot;deckFilter:string;setDeckFilter:(s:string)=>void;newCard:()=>void;edit:(c:CardView)=>void;importCards:()=>void;notify:Notify}){
  const [search,setSearch]=useState(''),[mode,setMode]=useState('all');
+ const [reader,setReader]=useState<{ids:string[];initialId:string}|null>(null);
+ const attention=useMemo(()=>attentionByCard(s),[s]);
  const [selected,setSelected]=useState<Set<string>>(new Set()),[conflict,setConflict]=useState<CardView|null>(null);
  const [pendingDelete,setPendingDelete]=useState<string[]|null>(null),[busy,setBusy]=useState(false);
  const decks=useMemo(()=>new Map(s.decks.map(d=>[d.id,d])),[s.decks]);
@@ -81,9 +85,11 @@ export function Library({s,deckFilter,setDeckFilter,newCard,edit,importCards,not
  const existingCards=useMemo(()=>s.cards.filter(c=>!c.purged&&decks.has(c.deckId)),[s.cards,decks]);
  const trashed=useMemo(()=>s.cards.filter(c=>c.deleted&&!c.purged),[s.cards]);
  const list=useMemo(()=>(mode==='trash'?trashed:existingCards.filter(c=>!c.deleted)).filter(c=>
-  (deckFilter==='all'||c.deckId===deckFilter)&&(mode!=='conflicts'||c.conflicts.length>0)&&
+  (deckFilter==='all'||c.deckId===deckFilter)&&(mode!=='conflicts'||c.conflicts.length>0)&&(mode!=='attention'||attention.has(c.id))&&
   [c.title,c.front,c.back,c.tags.join(' ')].join(' ').toLowerCase().includes(search.toLowerCase())
- ),[existingCards,trashed,mode,deckFilter,search]);
+ ),[existingCards,trashed,mode,deckFilter,search,attention]);
+ const previewable=list.filter(c=>!c.conflicts.length);
+ const preview=(id=previewable[0]?.id)=>{if(id)setReader({ids:previewable.map(c=>c.id),initialId:id});};
  const selectedCards=list.filter(c=>selected.has(c.id));
  const deleting=trashed.filter(c=>pendingDelete?.includes(c.id));
  const filterDecks=mode==='trash'?[...allDecks.values()]:s.decks;
@@ -130,17 +136,23 @@ export function Library({s,deckFilter,setDeckFilter,newCard,edit,importCards,not
   await exportDeckPack({...d,name:picked.every(c=>c.deckId===d.id)?d.name:'Выбранные карточки'},picked);
  };
  return <>
-  <PageHeader eyebrow="РЕДАКТОР И ПОИСК" title={mode==='trash'?'Корзина карточек':deckFilter==='all'?'Все карточки':allDecks.get(deckFilter)?.name||'Карточки'} description="Находи нужное, уточняй вопросы, собирай материал по частям.">
+  <PageHeader eyebrow="РЕДАКТОР И ПОИСК" title={mode==='trash'?'Корзина карточек':mode==='attention'?'Рассмотреть':deckFilter==='all'?'Все карточки':allDecks.get(deckFilter)?.name||'Карточки'} description="Находи нужное, уточняй вопросы, собирай материал по частям.">
+   <Button kind="secondary" disabled={!previewable.length} onClick={()=>preview()}><Eye size={17}/>{mode==='attention'?'Изучить карточки':'Предпросмотр'}</Button>
    <Button kind="secondary" onClick={importCards}>Импорт .md</Button>
    <Button onClick={newCard} disabled={!s.decks.length}><Plus size={17}/>Новая карточка</Button>
   </PageHeader>
+  <div className="library-view-tabs" role="group" aria-label="Раздел карточек">
+   <button className={'button '+(mode==='all'?'secondary':'ghost')} aria-pressed={mode==='all'} onClick={()=>{setMode('all');setDeckFilter('all');setSelected(new Set());}}>Все карточки</button>
+   <button className={'button '+(mode==='attention'?'secondary':'ghost')} aria-pressed={mode==='attention'} onClick={()=>{setMode('attention');setDeckFilter('all');setSelected(new Set());}}>Рассмотреть ({attention.size})</button>
+  </div>
   <div className="library-toolbar">
    <div className="search-input"><Search size={17}/><input placeholder="Поиск по вопросу, ответу или тегам" value={search} onChange={e=>setSearch(e.target.value)}/></div>
    <select aria-label="Фильтр колоды" value={deckFilter} onChange={e=>{setDeckFilter(e.target.value);setSelected(new Set());}}><option value="all">Все колоды</option>{filterDecks.map(d=><option key={d.id} value={d.id}>{d.name}{decks.has(d.id)?'':' (в корзине)'}</option>)}</select>
    <select aria-label="Статус карточек" value={mode} onChange={e=>{setMode(e.target.value);setDeckFilter('all');setSelected(new Set());}}>
-    <option value="all">Активные</option><option value="conflicts">Конфликты ({existingCards.filter(c=>!c.deleted&&c.conflicts.length).length})</option><option value="trash">Корзина ({trashed.length})</option>
+    <option value="all">Активные</option><option value="attention">Рассмотреть ({attention.size})</option><option value="conflicts">Конфликты ({existingCards.filter(c=>!c.deleted&&c.conflicts.length).length})</option><option value="trash">Корзина ({trashed.length})</option>
    </select>
   </div>
+  {mode==='attention'&&<p className="attention-copy">Карточки с оценкой «Не вспомнил». Открой готовую карточку, разберись и нажми «Изучил». Новая ошибка вернёт её в этот список.</p>}
   {s.pending.length>0&&<div className="notice warning">Есть {s.pending.length} изменений без необходимой части истории. Подключи второе устройство или импортируй полный архив.</div>}
   {mode==='trash'&&<div className="trash-toolbar"><p>Можно восстановить карточки или удалить навсегда. Статистика ответов сохранится.</p><Button kind="danger" disabled={busy||!trashed.length} onClick={()=>setPendingDelete(trashed.map(c=>c.id))}><Trash2 size={16}/>Очистить всю корзину</Button></div>}
   {selectedCards.length>0&&<div className="selection-bar">
@@ -154,16 +166,17 @@ export function Library({s,deckFilter,setDeckFilter,newCard,edit,importCards,not
     <input type="checkbox" aria-label={'Выбрать '+c.title} checked={selected.has(c.id)} onChange={()=>toggle(c.id)}/>
     <button className="card-question" disabled={c.deleted} onClick={()=>c.conflicts.length?setConflict(c):edit(c)}>
      <strong>{c.title||cleanText(c.front).slice(0,80)}</strong><small>{cleanText(c.front).slice(0,95)}</small>
-     <div className="card-tags"><span>{({basic:'Вопрос–ответ',input:'Ввод',cloze:'Пропуск'})[c.type]}</span>{c.conflicts.length>0&&<span className="conflict-tag"><AlertTriangle size={12}/>Две версии</span>}{c.tags.filter(Boolean).slice(0,3).map(t=><span key={t}>#{t}</span>)}</div>
+     <div className="card-tags">{attention.has(c.id)&&<span className="attention-label">Рассмотреть</span>}<span>{({basic:'Вопрос–ответ',input:'Ввод',cloze:'Пропуск'})[c.type]}</span>{c.conflicts.length>0&&<span className="conflict-tag"><AlertTriangle size={12}/>Две версии</span>}{c.tags.filter(Boolean).slice(0,3).map(t=><span key={t}>#{t}</span>)}</div>
     </button>
     <span className="card-deck" style={{color:allDecks.get(c.deckId)?.color}}>{allDecks.get(c.deckId)?.name||'Удалённая колода'}</span>
     <span className="card-due">{c.deleted?decks.has(c.deckId)?'В корзине':'Сначала восстанови колоду':c.conflicts.length?'Выбери версию':c.memory?c.memory.due<=Date.now()?'Пора повторить':formatDate(c.memory.due):'Новая'}</span>
     <div className="card-row-actions">
-     {c.deleted?<><button className="icon-button" disabled={busy} aria-label={'Восстановить '+c.title} title={decks.has(c.deckId)?'Восстановить карточку':'Сначала восстанови колоду'} onClick={()=>restore(c)}><RotateCcw size={16}/></button><button className="icon-button danger-control" disabled={busy} aria-label={'Удалить навсегда '+c.title} title="Удалить навсегда" onClick={()=>setPendingDelete([c.id])}><Trash2 size={16}/></button></>:<button className="icon-button" disabled={busy} aria-label={'В корзину '+c.title} onClick={()=>trash([c.id])}><Trash2 size={16}/></button>}
+     {c.deleted?<><button className="icon-button" disabled={busy} aria-label={'Восстановить '+c.title} title={decks.has(c.deckId)?'Восстановить карточку':'Сначала восстанови колоду'} onClick={()=>restore(c)}><RotateCcw size={16}/></button><button className="icon-button danger-control" disabled={busy} aria-label={'Удалить навсегда '+c.title} title="Удалить навсегда" onClick={()=>setPendingDelete([c.id])}><Trash2 size={16}/></button></>:<><button className="icon-button" disabled={busy||Boolean(c.conflicts.length)} aria-label={'Просмотр '+c.title} title="Предпросмотр карточки" onClick={()=>preview(c.id)}><Eye size={17}/></button><button className="icon-button" disabled={busy} aria-label={'В корзину '+c.title} onClick={()=>trash([c.id])}><Trash2 size={16}/></button></>}
     </div>
    </div>)}
-  </div>:<Empty title={mode==='trash'?'Корзина пуста':search?'Ничего не найдено':'Здесь появятся твои вопросы'} description={mode==='trash'?'Здесь появятся карточки, которые ты переместишь в корзину.':search?'Попробуй другой запрос или выбери все колоды.':'Создавай карточки вручную или переноси материал из Markdown.'}>{!search&&mode!=='trash'&&<Button kind="secondary" onClick={importCards}><FileInput size={16}/>Импортировать Markdown</Button>}</Empty>}
+  </div>:<Empty title={mode==='trash'?'Корзина пуста':mode==='attention'?(search?'Ничего не найдено':'Всё рассмотрено'):search?'Ничего не найдено':'Здесь появятся твои вопросы'} description={mode==='trash'?'Здесь появятся карточки, которые ты переместишь в корзину.':mode==='attention'?(search?'Попробуй другой запрос или выбери все колоды.':'После ошибок в проверках здесь появятся карточки для спокойного изучения.'):search?'Попробуй другой запрос или выбери все колоды.':'Создавай карточки вручную или переноси материал из Markdown.'}>{!search&&mode!=='trash'&&mode!=='attention'&&<Button kind="secondary" onClick={importCards}><FileInput size={16}/>Импортировать Markdown</Button>}</Empty>}
   <p className="table-footer">{formatCount(list.length)}{mode==='all'?' · Каждый ответ сохраняется вместе с версией вопроса.':''}</p>
+  {reader&&<CardReader s={s} ids={reader.ids} initialId={reader.initialId} onClose={()=>setReader(null)} notify={notify}/>}
   {pendingDelete&&<Dialog title="Удалить карточки навсегда?" onClose={()=>{if(!busy)setPendingDelete(null);}}>
    <div className="form-body permanent-delete-info"><p>Карточек к удалению: <strong>{deleting.length}</strong>. Они исчезнут из библиотеки и корзины. Восстановить их через приложение будет нельзя.</p>
     <ul>{deleting.slice(0,5).map(c=><li key={c.id}>{c.title||cleanText(c.front).slice(0,80)}</li>)}</ul>{deleting.length>5&&<p>И ещё {deleting.length-5}.</p>}

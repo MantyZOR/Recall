@@ -7,7 +7,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { unzipSync, strFromU8 } from 'fflate';
-import { base, card, op } from '../fixtures';
+import { base, card, op, review } from '../fixtures';
 const parent=path.resolve('test-results'),data=path.join(parent,'server-'+randomUUID()),port=18787,tlsPort=18443,bootstrapPort=18788;
 let child:ChildProcess,token='',phoneToken='',pair:any,logs='';
 const testCerts=path.join(data,'certs');let ca:Buffer;
@@ -107,6 +107,19 @@ describe('local TLS service, pairing, exchange and durable copies',()=>{
  it('revokes the old phone without deleting the journal and enforces HTTPS pairing',async()=>{
   expect((await secure('pair/revoke',{},token)).status).toBe(200);expect((await secure('status',undefined,phoneToken)).status).toBe(401);expect((await secure('status',undefined,token)).body.events).toBe(9);
   const r=await fetch('http://127.0.0.1:'+port+'/api/pair/accept',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});expect(r.status).toBe(403);
+ });
+ it('syncs studied mistakes to another device and retains the mark after restart',async()=>{
+  const mistake=op('attention-error','review',{...review,cardVersion:'pc-edit',context:'exam',rating:1},['pc-edit'],9,'attention',1);
+  const studied=op('attention-studied','study.resolve',{cardId:card.id,reviewIds:[mistake.id]},[mistake.id],10,'attention',2);
+  const result=await secure('sync',{events:[mistake,studied],cursor:{}},token);
+  expect(result.status).toBe(200);
+  const invite=(await secure('pair/create',{},token)).body;
+  const phone=(await secure('pair/accept',{secret:invite.code,deviceId:'attention-phone',name:'Телефон'})).body.token;
+  const pulled=await secure('sync',{events:[],cursor:{}},phone);
+  expect(pulled.status).toBe(200);expect(pulled.body.events.find((e:any)=>e.id===studied.id)).toEqual(studied);
+  await stop();launch();await ready();
+  const after=await secure('sync',{events:[mistake,studied],cursor:{}},phone);
+  expect(after.status).toBe(200);expect(after.body.events.filter((e:any)=>e.id===studied.id)).toHaveLength(1);
  });
 });
 

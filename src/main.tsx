@@ -12,6 +12,8 @@ import './goal-pace.css';
 import './phone-setup.css';
 import './study-plan.css';
 import './help-guide.css';
+import './card-reader.css';
+import './activity.css';
 class Boundary extends Component<{children:ReactNode},{error:string}>{
  state={error:''};
  static getDerivedStateFromError(error:Error){return {error:error.message};}

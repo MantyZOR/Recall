@@ -9,6 +9,7 @@ import { append, snapshot } from '../storage/db';
 import { causalHeads, targetRetention } from '../domain/reducer';
 import { Button, Progress, formatCount } from './common';
 import { Markdown } from './Markdown';
+import { CardReader } from './CardReader';
 import { useStudyDock } from './use-study-dock';
 
 type Props={s:Snapshot;ids:string[];context:Context;minutes:number;onExit:()=>void;edit:(c:CardView)=>void;notify:(s:string,error?:boolean)=>void;};
@@ -16,6 +17,7 @@ const RATING_NAMES=['Не вспомнил','Трудно','Нормально',
 const RATING_COMPACT=['Забыл','Трудно','Норм.','Легко'];
 
 export function Session({s,ids,context,minutes,onExit,edit,notify}:Props){
+ const [consider,setConsider]=useState(false);
  const answerSection=useRef<HTMLDivElement>(null),skipped=useRef(new Set<string>());
  const latest=useRef(s);if(s.events.length>=latest.current.events.length)latest.current=s;
  const [queue,setQueue]=useState(ids),[index,setIndex]=useState(0),[shown,setShown]=useState(false),[typed,setTyped]=useState(''),[hints,setHints]=useState(false),[busy,setBusy]=useState(false);
@@ -116,7 +118,8 @@ export function Session({s,ids,context,minutes,onExit,edit,notify}:Props){
   <p>{timeUp?'Бюджет времени на эту сессию закончился. Уже сохранённые ответы и изучение учтены.':'Все оценки сохранены на этом устройстве. Следующие повторы назначены по истории.'}</p>
   <div className="summary-metrics"><div><strong>{results.length}</strong><span>ответов</span></div><div><strong>{results.length?Math.round(correct/results.length*100)+'%':'—'}</strong><span>без подсказки</span></div><div><strong>{Math.max(0,Math.round(spent))}</strong><span>минут</span></div></div>
   {readings.length>0&&<div className="introduction-summary"><BookOpen size={20}/><div><strong>Первичное изучение: {formatCount(new Set(readings.map(r=>r.cardId)).size)}</strong><p>Чтение учтено отдельно от ответов.{timeUp&&index<queue.length?' Карточки без первой оценки ждут проверки в «Сегодня».':''}</p></div></div>}
-  {results.some(r=>r.rating===1)&&<div className="notice"><strong>Что полезно уточнить</strong><p>{[...new Set(results.filter(r=>r.rating===1).map(r=>s.cards.find(c=>c.id===r.cardId)?.title))].slice(0,6).filter(Boolean).join(' · ')}</p></div>}
+  {results.some(r=>r.rating===1)&&<div className="notice"><strong>Что полезно уточнить</strong><p>{[...new Set(results.filter(r=>r.rating===1).map(r=>s.cards.find(c=>c.id===r.cardId)?.title))].slice(0,6).filter(Boolean).join(' · ')}</p><p>Эти карточки доступны в «Карточки → Рассмотреть».</p><Button kind="secondary" onClick={()=>setConsider(true)}><BookOpen size={17}/>Разобрать карточки</Button></div>}
+  {consider&&<CardReader s={s} ids={[...new Set(results.filter(r=>r.rating===1).map(r=>r.cardId))]} onClose={()=>setConsider(false)} notify={notify}/>}
   <div className="summary-buttons"><Button onClick={onExit}>Вернуться к сегодня<ArrowRight size={16}/></Button>{timeUp&&index<queue.length&&<Button kind="secondary" onClick={()=>setBudget(b=>b+minutes)}>Продолжить ещё {minutes} мин</Button>}{results.length>0&&<button className="text-button" disabled={busy} onClick={undo}><Undo2 size={16}/>Отменить последнюю оценку</button>}</div>
  </div>;
  const displayFront=card.type==='cloze'?clozeDisplay(card.front,card.clozeIndex||1,false,hints):card.front;

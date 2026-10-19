@@ -2,6 +2,7 @@ import type { Card, CardView, Deck, Snapshot } from './types';
 import { append, db, snapshot } from '../storage/db';
 import { entityHeads, deletedDecks, purgedDeckIds } from './reducer';
 import { clozeGroups, type ImportedCard } from './markdown';
+import { attentionByCard } from './attention';
 export function cardData(c:Card):Card {return {id:c.id,deckId:c.deckId,title:c.title,type:c.type,front:c.front,back:c.back,notes:c.notes,aliases:c.aliases,tags:c.tags,...(c.clozeIndex?{clozeIndex:c.clozeIndex}:{}),...(c.siblingId?{siblingId:c.siblingId}:{})};}
 export async function saveDeck(deck:Deck,s:Snapshot){
  await db.transaction('rw',db.events,db.meta,async()=>{
@@ -43,6 +44,20 @@ export async function addExamples(s:Snapshot){
 }
 
 
+
+/** Reading a mistake is independent of the memory model and does not fabricate a review. */
+export async function resolveAttention(cardId:string){
+ return db.transaction('rw',db.events,db.meta,async()=>{
+  const current=await snapshot(),card=current.cards.find(c=>c.id===cardId);
+  const mistakes=attentionByCard(current).get(cardId)||[];
+  if(!card||!mistakes.length)return false;
+  for(let i=0;i<mistakes.length;i+=100){
+   const reviewIds=mistakes.slice(i,i+100).map(e=>e.id);
+   await append('study.resolve',cardId,{cardId,reviewIds},[...card.heads,...reviewIds]);
+  }
+  return true;
+ });
+}
 
 export async function purgeCards(ids:string[]){
  return db.transaction('rw',db.events,db.meta,async()=>{
