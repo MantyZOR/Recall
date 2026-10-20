@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { liveQuery } from 'dexie';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
-import { ArrowLeftRight, Camera, CheckCircle2, Copy, Link2, MonitorSmartphone, Plus, Unplug } from 'lucide-react';
+import { ArrowLeftRight, Camera, CheckCircle2, Copy, Link2, MonitorSmartphone, Plus, Unplug, ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
 import type { LocalIdentity } from '../domain/types';
 import { PUBLIC_RECALL_URL, forgetPeer, peers, renameLocalDevice, type Peer } from '../storage/peer-identity';
 import { PeerSession, type PeerProgress } from '../storage/peer-sync';
@@ -60,22 +60,26 @@ function PeerDialog({onClose,expectedId}:{onClose:()=>void;expectedId?:string}){
 }
 
 function PeerQR({value}:{value:string}){
- const parts=qrParts(value),[index,setIndex]=useState(0),[image,setImage]=useState(''),[error,setError]=useState('');
- useEffect(()=>{let active=true;QRCode.toDataURL(parts[index],{width:360,margin:3,errorCorrectionLevel:'L',color:{dark:'#151322',light:'#ffffff'}}).then(src=>{if(active)setImage(src);}).catch(()=>{if(active)setError('QR не удалось построить. Скопируй код текстом.');});return()=>{active=false;};},[value,index]);
- useEffect(()=>{if(parts.length<2)return;const timer=setInterval(()=>setIndex(i=>(i+1)%parts.length),1800);return()=>clearInterval(timer);},[value,parts.length]);
- return <div className="peer-qr">{image&&<img src={image} alt="QR прямого обмена"/>}{error&&<p>{error}</p>}{parts.length>1&&<p className="hint">QR из {parts.length} частей · сейчас {index+1}. Части сменяются автоматически; держи камеру наведённой.</p>}</div>;
+ const parts=qrParts(value),[index,setIndex]=useState(0),[image,setImage]=useState(''),[error,setError]=useState(''),[playing,setPlaying]=useState(true);
+ useEffect(()=>{let active=true;QRCode.toDataURL(parts[index],{width:400,margin:4,errorCorrectionLevel:'M',color:{dark:'#000000',light:'#ffffff'}}).then(src=>{if(active)setImage(src);}).catch(()=>{if(active)setError('QR не удалось построить. Скопируй код текстом.');});return()=>{active=false;};},[value,index]);
+ // A timeout starts after each displayed frame, including manual navigation.
+ useEffect(()=>{if(parts.length<2||!playing||!image)return;const timer=setTimeout(()=>setIndex(i=>(i+1)%parts.length),4000);return()=>clearTimeout(timer);},[value,parts.length,playing,image]);
+ const step=(delta:number)=>{setPlaying(false);setIndex(i=>(i+delta+parts.length)%parts.length);};
+ return <div className="peer-qr"><p className="hint">Читай кнопкой «Сканировать QR-код» внутри Recall на другом устройстве.</p>{image&&<img src={image} alt="QR прямого обмена"/>}{error&&<p>{error}</p>}{parts.length>1&&<><div className="peer-qr-controls"><button className="icon-button" aria-label="Предыдущая часть QR" onClick={()=>step(-1)}><ChevronLeft size={20}/></button><span aria-live="polite">Часть {index+1} из {parts.length}</span><button className="icon-button" aria-label="Следующая часть QR" onClick={()=>step(1)}><ChevronRight size={20}/></button></div><Button kind="secondary" onClick={()=>setPlaying(v=>!v)}>{playing?<Pause size={16}/>:<Play size={16}/>} {playing?'Пауза QR':'Автосмена QR'}</Button><p className="hint">{playing?'Части меняются раз в 4 секунды. Держи камеру наведённой до сбора всех частей.':'QR на паузе. Когда сканер прочитает эту часть, переключи на следующую стрелкой.'}</p></>}</div>;
 }
 
 function PeerScanner({onClose,onCode}:{onClose:()=>void;onCode:(code:string)=>void}){
- const video=useRef<HTMLVideoElement>(null),[hint,setHint]=useState('Наведи камеру на QR в окне прямого обмена.');
+ const video=useRef<HTMLVideoElement>(null),[hint,setHint]=useState('Наведи камеру на QR внутри Recall. Поднеси ближе, чтобы весь QR был крупным в кадре, и держи телефон неподвижно.');
  useEffect(()=>{
-  let stopped=false,stream:MediaStream|undefined,frame=0,last='',lastAt=0;
+  let stopped=false,stream:MediaStream|undefined,frame=0,last='',lastAt=0,lastFrame=0;
   const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true}),collector=new QrCollector();
   if(!navigator.mediaDevices?.getUserMedia){setHint('Камера недоступна. Закрой сканер и вставь код текстом.');return;}
   void navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280}},audio:false}).then(async media=>{
    stream=media;if(stopped){media.getTracks().forEach(track=>track.stop());return;}if(video.current){video.current.srcObject=media;await video.current.play();}
    const scan=()=>{
     if(stopped)return;
+    // Avoid decoding full camera frames sixty times per second.
+    if(performance.now()-lastFrame<150){frame=requestAnimationFrame(scan);return;}lastFrame=performance.now();
     const view=video.current;
     if(view&&view.readyState>=2&&ctx){canvas.width=view.videoWidth;canvas.height=view.videoHeight;ctx.drawImage(view,0,0);const pixels=ctx.getImageData(0,0,canvas.width,canvas.height),qr=jsQR(pixels.data,pixels.width,pixels.height,{inversionAttempts:'dontInvert'});
      if(qr&&(qr.data!==last||Date.now()-lastAt>2000)){last=qr.data;lastAt=Date.now();try{const result=collector.read(qr.data);if(result.code){stopped=true;media.getTracks().forEach(track=>track.stop());onCode(result.code);return;}setHint(`Прочитано частей: ${result.received} из ${result.total}. Держи камеру наведённой.`);}catch(e){setHint((e as Error).message);}}

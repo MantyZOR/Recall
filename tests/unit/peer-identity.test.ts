@@ -31,7 +31,7 @@ describe('signed invitations and remembered device identity',()=>{
  });
  it('assembles animated QR parts out of order, tolerates repeats, and rejects mixed or damaged payloads',()=>{
   const code='recall-peer:1:'+'a'.repeat(5300),parts=qrParts(code),reader=new QrCollector();
-  expect(parts).toHaveLength(6);expect(reader.read(parts[4])).toMatchObject({received:1,total:6});expect(reader.read(parts[4]).received).toBe(1);
+  expect(parts).toHaveLength(18);expect(reader.read(parts[4])).toMatchObject({received:1,total:18});expect(reader.read(parts[4]).received).toBe(1);
   for(const part of [...parts].reverse().slice(0,-1))reader.read(part);
   expect(reader.read(parts[0]).code).toBe(code);
   expect(new QrCollector().read('recall-peer:1:abc').code).toBe('recall-peer:1:abc');

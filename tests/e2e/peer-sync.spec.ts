@@ -90,3 +90,47 @@ test('rejects a corrupted image before acknowledging or committing its related c
   expect((await data(b)).events).toHaveLength(0);expect((await data(b)).assets).toHaveLength(0);expect((await data(b)).peers[0].lastSync).toBeUndefined();
  }finally{await ca.close();await cb.close();}
 });
+
+async function camera(page:Page){
+ await page.evaluate(()=>{
+  const canvas=document.createElement('canvas');canvas.width=640;canvas.height=480;
+  const ctx=canvas.getContext('2d')!;ctx.fillStyle='#b0b0b0';ctx.fillRect(0,0,640,480);
+  const stream=canvas.captureStream(10);
+  // A camera produces continuous frames even when its subject is stationary.
+  // Repaint a corner so an early canvas frame cannot be lost before video.play().
+  let tick=0;const timer=setInterval(()=>{const track=stream.getVideoTracks()[0];if(track.readyState==='ended'){clearInterval(timer);return;}ctx.fillStyle=++tick%2?'#afafaf':'#b0b0b0';ctx.fillRect(0,0,2,2);(track as CanvasCaptureMediaStreamTrack).requestFrame();},100);
+  navigator.mediaDevices.getUserMedia=async()=>stream;
+  (window as any).__qrCamera={canvas,stream};
+ });
+}
+async function scanFrames(source:Page,receiver:Page){
+ await source.getByRole('button',{name:'Пауза QR',exact:true}).click();
+ const img=source.getByRole('img',{name:'QR прямого обмена',exact:true});
+ const count=Number((await source.locator('.peer-qr-controls>span').innerText()).match(/из (\d+)/)![1]);
+ await camera(receiver);await receiver.getByRole('button',{name:'Сканировать QR-код',exact:true}).click();
+ for(let i=0;i<count;i++){
+  const src=await img.getAttribute('src');
+  await receiver.evaluate(async(src)=>{
+   const image=new Image();image.src=src!;await image.decode();
+   const {canvas}=(window as any).__qrCamera,ctx=canvas.getContext('2d');
+   ctx.filter='none';ctx.fillStyle='#b0b0b0';ctx.fillRect(0,0,640,480);ctx.filter='blur(0.5px)';ctx.drawImage(image,190,110,260,260);ctx.filter='none';
+  },src);
+  if(i<count-1){
+   await expect(receiver.getByRole('dialog',{name:'Сканировать прямой обмен'}).getByRole('status')).toContainText(`Прочитано частей: ${i+1} из ${count}`);
+   await source.getByRole('button',{name:'Следующая часть QR',exact:true}).click();await expect(img).not.toHaveAttribute('src',src!);
+  }
+ }
+ await expect(receiver.getByRole('dialog',{name:'Сканировать прямой обмен'})).toHaveCount(0);
+ expect(await receiver.evaluate(()=>(window as any).__qrCamera.stream.getTracks().every((t:MediaStreamTrack)=>t.readyState==='ended'))).toBe(true);
+}
+test('scans a defocused camera video in both directions, supports manual QR navigation, and releases cameras',async({browser})=>{
+ const ca=await browser.newContext(),cb=await browser.newContext({viewport:{width:428,height:926},isMobile:true,hasTouch:true});const a=await ca.newPage(),b=await cb.newPage();
+ try{
+  await boot(a,'Компьютер');await boot(b,'Телефон');await seed(a,'a',2);
+  await a.getByRole('button',{name:'Новое подключение',exact:true}).click();await a.getByRole('button',{name:'Создать приглашение',exact:true}).click();await expect(a.getByRole('button',{name:'Пауза QR',exact:true})).toBeVisible();
+  await b.getByRole('button',{name:'Новое подключение',exact:true}).click();await b.getByRole('button',{name:'У меня есть код',exact:true}).click();
+  await scanFrames(a,b);await expect(b.getByLabel('Ответный код',{exact:true})).toHaveValue(/^recall-peer:1:/);
+  await scanFrames(b,a);await expect(a.getByRole('button',{name:'Объединить данные',exact:true})).toBeVisible();await expect(b.getByRole('button',{name:'Объединить данные',exact:true})).toBeVisible();
+  await finish(a,b);expect((await data(b)).events).toEqual((await data(a)).events);
+ }finally{await ca.close();await cb.close();}
+});
