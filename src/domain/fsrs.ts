@@ -10,7 +10,7 @@ export const defaults=(algorithm:Algorithm)=>algorithm==='fsrs6'?FSRS6_DEFAULT:F
 type WasmCore={set_parameter:(i:number,v:number)=>void; next:(s:number,d:number,f:number,t:number,r:number)=>void; get_s:()=>number;get_d:()=>number;get_f:()=>number;recall:(s:number,d:number,f:number,t:number)=>number;interval:(s:number,d:number,f:number,r:number)=>number};
 let wasm:WasmCore|undefined;
 export async function initMemoryCore() {
-  try { const r=await fetch('/fsrs7.wasm',{signal:AbortSignal.timeout(3000)}); if (!r.ok) return; const result=await WebAssembly.instantiate(await r.arrayBuffer()); wasm=result.instance.exports as unknown as WasmCore;configuredWeights=undefined; } catch { /* Validated scalar fallback keeps offline learning available. */ }
+  try { const r=await fetch(import.meta.env.BASE_URL+'fsrs7.wasm',{signal:AbortSignal.timeout(3000)}); if (!r.ok) return; const result=await WebAssembly.instantiate(await r.arrayBuffer()); wasm=result.instance.exports as unknown as WasmCore;configuredWeights=undefined; } catch { /* Validated scalar fallback keeps offline learning available. */ }
 }
 let configuredWeights:number[]|undefined;
 function setWeights(w:number[]) { if(w===configuredWeights)return;w.forEach((v,i)=>wasm!.set_parameter(i,v));configuredWeights=w; }

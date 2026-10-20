@@ -1,7 +1,7 @@
 {
   "name": "recall-local",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -12,7 +12,9 @@
     "setup:tls": "node scripts/setup-tls.mjs",
     "build:launcher": "node scripts/build-launcher.mjs",
     "package:source": "node scripts/package-release.mjs source",
-    "package:portable": "node scripts/package-release.mjs portable"
+    "package:portable": "node scripts/package-release.mjs portable",
+    "build:web": "node scripts/build-web.mjs",
+    "publish:web": "npm run build:web && node scripts/publish-web.mjs"
   },
   "dependencies": {
     "@peculiar/x509": "^2.1.0",

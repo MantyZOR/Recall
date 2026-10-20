@@ -3,6 +3,7 @@ node_modules/
 tools/
 # Generated application, packages and test reports
 dist/
+dist-web/
 out/
 tmp/
 playwright-report/

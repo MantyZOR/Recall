@@ -2,7 +2,7 @@ import { test,expect,devices } from '@playwright/test';
 test('opens the device page from the launcher, switches installation platforms and explains reinstalling',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/?page=devices');await expect(page.getByRole('heading',{name:'Рядом. На связи.'})).toBeVisible();
- await expect(page.getByRole('heading',{name:'Первое подключение телефона'})).toBeVisible();
+ await page.getByText('Подключение через службу на ПК',{exact:true}).click();await expect(page.getByRole('heading',{name:'Первое подключение телефона'})).toBeVisible();
  await page.getByRole('button',{name:'Android',exact:true}).click();
  await expect(page.getByRole('link',{name:'Скачать сертификат для Android'})).toHaveAttribute('href','http://127.0.0.1:17888/ca.crt');
  await expect(page.getByRole('heading',{name:'Добавь приложение из Chrome'})).toBeVisible();

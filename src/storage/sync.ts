@@ -3,16 +3,18 @@ import { cursorOf, assetIds } from '../domain/protocol.mjs';
 import { compareEvents } from '../domain/reducer';
 import type { Connection, Operation, Attachment } from '../domain/types';
 export async function api<T=Record<string,unknown>>(route:string,payload?:unknown,method?:string,signal?:AbortSignal):Promise<T>{
+ if(import.meta.env.VITE_PUBLIC_APP==='true')throw Error('В веб-версии используй прямой обмен в «Устройствах»');
  const connection=await getMeta<Connection>('connection');
  const headers:Record<string,string>={};if(connection)headers.Authorization='Bearer '+connection.token;if(payload!==undefined)headers['Content-Type']='application/json';
  const response=await fetch('/api/'+route,{method:method||(payload===undefined?'GET':'POST'),headers,body:payload===undefined?undefined:JSON.stringify(payload),signal:requestSignal(15000,signal)});
  const result=await response.json();if(!response.ok)throw new Error(result.error||'Нет соединения с компьютером');return result;
 }
 export async function bootstrap(){
+ if(import.meta.env.VITE_PUBLIC_APP==='true')return;
  const hash=new URLSearchParams(location.hash.slice(1)),setup=hash.get('setup'),pair=hash.get('pair');
  if(setup){const connection:Connection={token:setup,serverId:'',role:'desktop',at:Date.now()};await setMeta('connection',connection);history.replaceState(null,'',location.pathname);return;}
  if(pair){await setMeta('pairSecret',pair);history.replaceState(null,'',location.pathname);}
- if(!await getMeta<Connection>('connection')&&['localhost','127.0.0.1'].includes(location.hostname)){try{await setMeta('connection',await api('local-bootstrap',{}));}catch{/* Offline opening is independent of the PC. */}}
+ if(import.meta.env.VITE_PUBLIC_APP!=='true'&&!await getMeta<Connection>('connection')&&['localhost','127.0.0.1'].includes(location.hostname)){try{await setMeta('connection',await api('local-bootstrap',{}));}catch{/* Offline opening is independent of the PC. */}}
 }
 export async function pairPhone(secret:string){const who=await identity();const result=await api<Connection>('pair/accept',{secret:secret.trim(),deviceId:who.id,name:who.name});await setMeta('connection',result);await setMeta('pairSecret','');}
 let running:Promise<void>|undefined;

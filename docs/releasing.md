@@ -39,6 +39,7 @@ npm version patch --no-git-tag-version
 
 ```powershell
 npm run build
+npm run build:web
 npm run build:launcher
 npm run package:portable
 npm test
@@ -46,6 +47,7 @@ npm run test:e2e
 ```
 
 - `build` собирает интерфейс, справку и файлы для работы без сети.
+- `build:web` готовит отдельную веб-версию и её офлайн-кэш; она нужна и для браузерных проверок.
 - `build:launcher` создаёт меню **Recall.exe**.
 - `package:portable` создаёт **out/Recall-portable-win-x64.zip** с Node.js и необходимыми зависимостями.
 - `test` проверяет расчёты, данные, службу и уже собранный переносимый пакет.
@@ -96,6 +98,14 @@ gh release view $recallTag --web
 ```
 
 Первая команда делает выпуск доступным всем и отмечает его как последний. Вторая открывает опубликованную страницу. Скачай ZIP и проверь запуск в отдельной папке. [Публикация черновика](https://cli.github.com/manual/gh_release_edit).
+
+Чтобы обновить также веб-страницу для прямого обмена:
+
+```powershell
+npm run publish:web
+```
+
+Она публикует только собранное приложение в ветку `gh-pages`. Данные пользователей туда не входят. Через несколько минут проверь [веб-версию Recall](https://mantyzor.github.io/Recall/).
 
 Для следующих выпусков повторяй шаги **2–6**.
 
