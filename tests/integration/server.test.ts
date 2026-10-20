@@ -121,6 +121,21 @@ describe('local TLS service, pairing, exchange and durable copies',()=>{
   const after=await secure('sync',{events:[mistake,studied],cursor:{}},phone);
   expect(after.status).toBe(200);expect(after.body.events.filter((e:any)=>e.id===studied.id)).toHaveLength(1);
  });
+ it('remembers multiple clients and their CORS origins, revokes one only, and preserves the rest across restart',async()=>{
+  const origin='https://old-home-address.local:8443';
+  const invite=(await secure('pair/create',{},token)).body;
+  expect((await secure('pair/accept',undefined,'',{Origin:origin,'Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'content-type'},'OPTIONS')).status).toBe(204);
+  const first=await secure('pair/accept',{secret:invite.code,deviceId:'roaming-phone',name:'Телефон'},'',{Origin:origin});expect(first.status).toBe(200);
+  const again=(await secure('pair/create',{},token)).body;
+  const second=await secure('pair/accept',{secret:again.code,deviceId:'roaming-laptop',name:'Ноутбук'},'',{Origin:'http://localhost:8787'});expect(second.status).toBe(200);
+  expect((await secure('sync',{events:[],cursor:{}},first.body.token,{Origin:origin})).status).toBe(200);
+  expect((await secure('status',undefined,second.body.token,{Origin:'http://localhost:8787'})).status).toBe(200);
+  expect((await secure('status',undefined,first.body.token,{Origin:'https://unrelated.example'})).status).toBe(403);
+  await stop();launch();await ready();expect((await secure('status',undefined,first.body.token,{Origin:origin})).status).toBe(200);
+  expect((await secure('pair/revoke',{deviceId:'roaming-phone'},token)).status).toBe(200);
+  expect((await secure('status',undefined,first.body.token,{Origin:origin})).status).toBe(403);
+  expect((await secure('status',undefined,second.body.token,{Origin:'http://localhost:8787'})).status).toBe(200);
+ });
 });
 
 

@@ -52,8 +52,9 @@ Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase
      <Button x:Name="SetupTls" Content="Настроить адрес и HTTPS"/>
      <TextBlock Text="IP телефона для разрешения в брандмауэре Windows" Margin="0,8,0,8"/>
      <TextBox x:Name="PhoneIp" ToolTip="Например, 192.168.1.233"/>
+     <CheckBox x:Name="LocalNetwork" Content="Несколько устройств в доверенных частных сетях" Margin="0,10,0,0"/>
      <Button x:Name="AllowLan" Content="Разрешить телефон в сети" Margin="0,10,0,8"/>
-     <TextBlock Text="Windows может запросить права администратора для сетевого правила. В публичной сети нужен конкретный IP телефона. Адреса лучше закрепить в роутере." FontSize="14" Foreground="#706B80"/>
+     <TextBlock Text="Для нескольких устройств включи переключатель: доступ будет разрешён только в частных сетях Windows на выбранном адаптере, включая постоянное имя компьютера. В публичной сети остаётся режим для конкретного IP телефона. Windows запросит права администратора." FontSize="14" Foreground="#706B80"/>
     </StackPanel></Expander>
     <Expander Header="Если удалил приложение с телефона"><StackPanel Margin="0,12,0,0"><TextBlock Text="1. Добавь Recall на экран телефона ещё раз. Если сертификат сохранился, переустанавливать его не нужно.&#10;&#10;2. На ПК в «Устройствах» отключи прежнее сопряжение и создай новый код.&#10;&#10;3. На телефоне открой новую иконку, свяжи устройства и дождись загрузки карточек с ПК. Для ещё не переданных изменений нужна сохранённая копия." FontSize="14"/><Button x:Name="RestoreHelp" Content="Открыть инструкцию" Margin="0,12,0,0"/></StackPanel></Expander>
    </StackPanel>
@@ -63,7 +64,7 @@ Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase
 '@
 $recallWindow = [Windows.Markup.XamlReader]::Load([Xml.XmlNodeReader]::new($recallXaml))
 $recallControls = @{}
-foreach ($recallName in @('Status','Message','PcAddress','PhoneAddress','OpenPc','ConnectPhone','Start','Stop','SetupQr','CopySetup','NetworkHint','AddressPicker','SetupTls','PhoneIp','AllowLan','RestoreHelp','Autostart')) { $recallControls[$recallName]=$recallWindow.FindName($recallName) }
+foreach ($recallName in @('Status','Message','PcAddress','PhoneAddress','OpenPc','ConnectPhone','Start','Stop','SetupQr','CopySetup','NetworkHint','AddressPicker','SetupTls','PhoneIp','AllowLan','LocalNetwork','RestoreHelp','Autostart')) { $recallControls[$recallName]=$recallWindow.FindName($recallName) }
 if (Test-Path -LiteralPath (Join-Path $recallRoot 'public\icon-192.png')) { $recallWindow.Icon=[Windows.Media.Imaging.BitmapFrame]::Create([Uri](Join-Path $recallRoot 'public\icon-192.png')) }
 $script:recallJob=$null; $script:recallSetupOrigin=$null; $script:recallSelectedAddress=$null; $script:recallChangingStartup=$false
 function Show-RecallMessage([string]$text) { $recallControls.Message.Text=$text }
@@ -142,6 +143,7 @@ $recallControls.SetupTls.Add_Click({
  Start-RecallJob 'powershell.exe' @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'stop.ps1')) 'stop-for-tls'
 })
 $recallControls.AllowLan.Add_Click({
+ if ($recallControls.LocalNetwork.IsChecked) { Start-RecallJob 'powershell.exe' @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'allow-lan.ps1'),'-LocalNetwork') 'lan';return }
  $recallIp=$recallControls.PhoneIp.Text.Trim()
  if($recallIp -and ($recallIp -notmatch '^(?:\d{1,3}\.){3}\d{1,3}$' -or ($recallIp.Split('.') | Where-Object {[int]$_ -gt 255}))){Show-RecallMessage 'Укажи IPv4 телефона, например 192.168.1.233.';return}
  Start-RecallJob 'powershell.exe' @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'allow-lan.ps1'),'-PhoneAddress',$recallIp) 'lan'

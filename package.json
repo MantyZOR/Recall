@@ -1,7 +1,7 @@
 {
   "name": "recall-local",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -23,6 +23,7 @@
     "jsqr": "^1.4.0",
     "katex": "^0.19.0",
     "lucide-react": "^1.50.0",
+    "multicast-dns": "7.2.5",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

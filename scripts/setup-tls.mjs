@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { certificateProfile } from '../server/certificate-profile.mjs';
 import * as x509 from '@peculiar/x509';
-import { webcrypto, randomBytes, X509Certificate } from 'node:crypto';
+import { webcrypto, randomBytes, X509Certificate, createHash } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -28,11 +28,12 @@ else{const keys=await webcrypto.subtle.generateKey(algorithm,true,['sign','verif
 }
 writeFileSync(path.join(dir,'Recall-Local-CA.mobileconfig'),certificateProfile(Buffer.from(ca.rawData)));
 const serverAlgorithm={...algorithm,modulusLength:2048},serverKeys=await webcrypto.subtle.generateKey(serverAlgorithm,true,['sign','verify']),expires=new Date(Date.now()+365*86400000);
-const cert=await x509.X509CertificateGenerator.create({subject:'CN=Recall Local',issuer:ca.subject,publicKey:serverKeys.publicKey,signingKey:caKey,serialNumber:randomBytes(16).toString('hex'),notBefore:new Date(Date.now()-86400000),notAfter:expires,signingAlgorithm:algorithm,extensions:[new x509.BasicConstraintsExtension(false,undefined,true),new x509.KeyUsagesExtension(x509.KeyUsageFlags.digitalSignature|x509.KeyUsageFlags.keyEncipherment,true),new x509.ExtendedKeyUsageExtension(['1.3.6.1.5.5.7.3.1']),new x509.SubjectAlternativeNameExtension([{type:'ip',value:address},{type:'ip',value:'127.0.0.1'},{type:'dns',value:'localhost'}]),await x509.SubjectKeyIdentifierExtension.create(serverKeys.publicKey),await x509.AuthorityKeyIdentifierExtension.create(ca.publicKey)]});
+const localName='recall-'+createHash('sha256').update(Buffer.from(ca.rawData)).digest('hex').slice(0,12)+'.local';
+const cert=await x509.X509CertificateGenerator.create({subject:'CN=Recall Local',issuer:ca.subject,publicKey:serverKeys.publicKey,signingKey:caKey,serialNumber:randomBytes(16).toString('hex'),notBefore:new Date(Date.now()-86400000),notAfter:expires,signingAlgorithm:algorithm,extensions:[new x509.BasicConstraintsExtension(false,undefined,true),new x509.KeyUsagesExtension(x509.KeyUsageFlags.digitalSignature|x509.KeyUsageFlags.keyEncipherment,true),new x509.ExtendedKeyUsageExtension(['1.3.6.1.5.5.7.3.1']),new x509.SubjectAlternativeNameExtension([{type:'ip',value:address},{type:'ip',value:'127.0.0.1'},{type:'dns',value:'localhost'},{type:'dns',value:localName}]),await x509.SubjectKeyIdentifierExtension.create(serverKeys.publicKey),await x509.AuthorityKeyIdentifierExtension.create(ca.publicKey)]});
 writeFileSync(path.join(dir,'server-key.pem'),pem('PRIVATE KEY',await webcrypto.subtle.exportKey('pkcs8',serverKeys.privateKey)),{mode:0o600});
 writeFileSync(path.join(dir,'server.pem'),cert.toString('pem')+'\n'+ca.toString('pem'));
 const fingerprint=new X509Certificate(ca.toString('pem')).fingerprint256;
-writeFileSync(configPath,JSON.stringify({address,origin:'https://'+address+':8443',bootstrapOrigin:'http://'+address+':8788',expires:expires.toISOString(),fingerprint},null,2));
+writeFileSync(configPath,JSON.stringify({address,interfaceName:entries.find(i=>i.address===address)?.name,origin:'https://'+address+':8443',bootstrapOrigin:'http://'+address+':8788',localName,expires:expires.toISOString(),fingerprint},null,2));
 if(!process.env.RECALL_CERTS_DIR&&process.platform==='win32'&&process.env.USERNAME){
  const user=(process.env.USERDOMAIN?process.env.USERDOMAIN+'\\':'')+process.env.USERNAME;
  const calls=[[dir,'/inheritance:r','/grant:r',user+':(OI)(CI)F','SYSTEM:(OI)(CI)F'],...['config.json','rootCA.pem','rootCA.cer','rootCA-key.pem','server.pem','server-key.pem','Recall-Local-CA.mobileconfig'].map(name=>[path.join(dir,name),'/inheritance:r','/grant:r',user+':F','SYSTEM:F'])];

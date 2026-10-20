@@ -2,7 +2,7 @@ import {test,expect,type Page} from '@playwright/test';
 
 async function boot(page:Page,name:string,web=false){
  await page.context().route('**/api/**',route=>route.fulfill({status:503,contentType:'application/json',body:'{"error":"Без службы ПК"}'}));
- await page.goto(web?'http://127.0.0.1:17890/Recall/?page=devices':'/?page=devices');await expect(page.getByRole('heading',{name:'Мои устройства',exact:true})).toBeVisible();
+ await page.goto(web?'http://127.0.0.1:17890/Recall/?page=devices':'/?page=devices');await expect(page.getByRole('heading',{name:'Устройства и синхронизация',exact:true})).toBeVisible();await page.getByText('Дополнительно: разовый прямой обмен',{exact:true}).click();
  await page.getByLabel('Имя этого устройства',{exact:true}).fill(name);await page.getByRole('button',{name:'Сохранить имя',exact:true}).click();
 }
 async function connect(a:Page,b:Page){
@@ -33,7 +33,7 @@ async function seed(page:Page,author:string,count:number,image=false){
   put('review',author+'-card0',{cardId:author+'-card0',cardVersion:first,rating:1,elapsedDays:0,durationMs:1000,context:'exam',hints:false,model:'FSRS-7/rust-scalar-v1',paramsId:'fsrs7-defaults-v1',retention:.9,prediction:null,previousReviewIds:[],sessionId:'test'});
   await new Promise<void>((resolve,reject)=>{const r=indexedDB.open('recall-local-v1');r.onsuccess=()=>{const d=r.result,t=d.transaction(['events','attachments'],'readwrite');for(const e of events)t.objectStore('events').put(e);if(image)t.objectStore('attachments').put({id:hash,name:'test.png',type:'image/png',blob:new Blob([bytes],{type:'image/png'})});t.oncomplete=()=>{d.close();resolve();};t.onerror=()=>reject(t.error);};});
  },{author,count,image});
- await page.reload();await expect(page.getByRole('heading',{name:'Мои устройства',exact:true})).toBeVisible();
+ await page.reload();await expect(page.getByRole('heading',{name:'Устройства и синхронизация',exact:true})).toBeVisible();await page.getByText('Дополнительно: разовый прямой обмен',{exact:true}).click();
 }
 
 test('direct WebRTC merges independent libraries, large images and reviews, remembers peers, and relays to a third profile',async({browser})=>{
@@ -74,7 +74,7 @@ test('retains completed batches after a storage failure, resumes without duplica
   await connect(a,b);await a.getByRole('button',{name:'Объединить данные',exact:true}).click();await b.getByRole('button',{name:'Объединить данные',exact:true}).click();
   await expect(b.getByRole('dialog').getByRole('status')).toContainText('хранилище заполнено');await expect(a.getByRole('button',{name:'Начать заново',exact:true})).toBeVisible();
   const partial=await data(b);expect(partial.events).toHaveLength(50);expect(partial.peers[0].lastSync).toBeUndefined();expect((await data(a)).peers[0].lastSync).toBeUndefined();
-  await a.getByRole('dialog').getByRole('button',{name:'Закрыть',exact:true}).click();await b.reload();await expect(b.getByRole('heading',{name:'Мои устройства',exact:true})).toBeVisible();
+  await a.getByRole('dialog').getByRole('button',{name:'Закрыть',exact:true}).click();await b.reload();await expect(b.getByRole('heading',{name:'Устройства и синхронизация',exact:true})).toBeVisible();await b.getByText('Дополнительно: разовый прямой обмен',{exact:true}).click();
   await connect(a,b);await finish(a,b);const complete=await data(b);expect(complete.events).toHaveLength(65);expect(complete.events).toEqual((await data(a)).events);
   expect(complete.events.find(e=>e.id==='a-65').payload.permanent).toBe(true);expect(complete.events.find(e=>e.id==='a-64').payload.name).toBe('Сохранённая цель');expect(complete.events.filter(e=>e.kind==='review')).toHaveLength(1);
  }finally{await ca.close();await cb.close();}

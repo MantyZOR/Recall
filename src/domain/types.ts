@@ -16,6 +16,6 @@ export interface Snapshot { decks:Deck[]; cards:CardView[]; goals:Goal[]; settin
 export interface ParameterSet { id:string; algorithm:'fsrs7'|'fsrs6'; values:number[]; trainedAt:number; trainingCount:number; testCount:number; trainCutoff:number; defaultLoss:number; fittedLoss:number; }
 export interface Attachment { id:string; name:string; type:string; blob:Blob; }
 export interface LocalIdentity { id:string; name:string; }
-export interface Connection { token:string; serverId:string; role:'desktop'|'phone'; at:number; lastSync?:number; ack?:Record<string,number>; }
+export interface Connection { token:string; serverId:string; role:'desktop'|'phone'; at:number; lastSync?:number; ack?:Record<string,number>; origin?:string; name?:string; error?:string; failures?:number; nextAttemptAt?:number; }
 export const MODEL_NAMES:Record<Algorithm,string>={fsrs7:'FSRS-7',fsrs6:'FSRS-6',sm2:'SM-2',leitner:'Лейтнер'};
 

@@ -13,7 +13,7 @@ export function syncRetry(value?:Partial<SyncRetry>):SyncRetry {
 export interface SyncState {syncing:boolean;error:string;retry:SyncRetry;paused:boolean;}
 interface Options {
  maxAttempts:number;retry:SyncRetry;available:()=>boolean;
- run:(signal:AbortSignal)=>Promise<void>;persist:(retry:SyncRetry)=>Promise<void>;
+ run:(signal:AbortSignal,manual:boolean)=>Promise<void>;persist:(retry:SyncRetry)=>Promise<void>;
  change:(state:SyncState)=>void;
 }
 const POLL_INTERVAL=60000;
@@ -60,7 +60,7 @@ export class SyncController {
   const controller=new AbortController();this.controller=controller;
   this.running=Promise.resolve().then(async()=>{
    try {
-    await this.options.run(controller.signal);
+    await this.options.run(controller.signal,manual);
     if(controller.signal.aborted||!this.active)return;
     this.retry={failures:0,nextAttemptAt:Date.now()+POLL_INTERVAL};this.error='';
    }catch(e){

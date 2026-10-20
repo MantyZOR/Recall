@@ -126,6 +126,8 @@ describe('IndexedDB writes and portable archives',()=>{
   const image=new File([new Uint8Array([137,80,78,71,1,2,3])],'example.png',{type:'image/png'}),hash=await addAttachment(image,image.name);
   await merge([base[0],{...base[1],payload:{...card,front:'![Пример](asset:'+hash+')'}}]);
   await setMeta('connection',{token:'should-never-export'});
+  await setMeta('syncConnections',[{origin:'https://recall-0123456789ab.local:8443',token:'laptop-secret-never-export'}]);
+  const exportedText=Object.values(unzipSync(await createArchive())).map(bytes=>new TextDecoder().decode(bytes)).join('\n');expect(exportedText).not.toContain('should-never-export');expect(exportedText).not.toContain('laptop-secret-never-export');
   const data=await createArchive(),files=unzipSync(data);const manifest=JSON.parse(new TextDecoder().decode(files['manifest.json']));expect(manifest.engine.models.fsrs7.defaultWeights).toEqual(FSRS7_DEFAULT);expect(manifest.engine.models.fsrs6.defaultWeights).toEqual(FSRS6_DEFAULT);expect(manifest.engine.source.commit).toMatch(/^[a-f0-9]{40}$/);expect(Object.keys(files)).toContain('attachments/'+hash+'.png');expect(JSON.stringify(files)).not.toContain('should-never-export');
   await Promise.all([db.events.clear(),db.attachments.clear()]);const preview=await readImport(new File([data.slice().buffer],'copy.recall.zip'));expect('events'in preview).toBe(true);
   if(!('events'in preview))throw Error('archive');
