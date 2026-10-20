@@ -9,6 +9,7 @@ export function qrParts(code:string){
 }
 export class QrCollector {
  private id='';private total=0;private parts=new Map<number,string>();
+ get progress(){return {received:this.parts.size,total:this.total};}
  read(value:string):{code?:string;received:number;total:number}{
   if(value.startsWith('recall-peer:1:'))return {code:value,received:1,total:1};
   const match=/^recall-qr:1:([a-f0-9]{8}):(\d{1,2}):(\d{1,2}):([A-Za-z0-9_:-]+)$/.exec(value);

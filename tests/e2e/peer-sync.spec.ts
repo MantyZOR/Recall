@@ -14,7 +14,7 @@ async function connect(a:Page,b:Page){
  await expect(a.getByRole('button',{name:'Объединить данные',exact:true})).toBeVisible();await expect(b.getByRole('button',{name:'Объединить данные',exact:true})).toBeVisible();
 }
 async function finish(a:Page,b:Page){
- await a.getByRole('button',{name:'Объединить данные',exact:true}).click();await expect(a.getByRole('status')).toContainText('Ждём подтверждения');
+ await a.getByRole('button',{name:'Объединить данные',exact:true}).click();await expect(a.getByRole('dialog',{name:'Прямой обмен'}).getByRole('status')).toContainText('Ждём подтверждения');
  await b.getByRole('button',{name:'Объединить данные',exact:true}).click();
   await expect(a.getByRole('dialog').getByRole('status')).toContainText('Обмен завершён',{timeout:30000});await a.getByRole('button',{name:'Готово',exact:true}).click();
   await expect(b.getByRole('dialog').getByRole('status')).toContainText('Обмен завершён',{timeout:30000});await b.getByRole('button',{name:'Готово',exact:true}).click();
@@ -103,7 +103,8 @@ async function camera(page:Page){
   (window as any).__qrCamera={canvas,stream};
  });
 }
-async function scanFrames(source:Page,receiver:Page){
+async function scanFrames(source:Page,receiver:Page,resume=false){
+ if(!await source.getByRole('button',{name:'Пауза QR',exact:true}).isVisible())await source.getByText('Показать QR-код ответа, если на другом устройстве есть камера',{exact:true}).click();
  await source.getByRole('button',{name:'Пауза QR',exact:true}).click();
  const img=source.getByRole('img',{name:'QR прямого обмена',exact:true});
  const count=Number((await source.locator('.peer-qr-controls>span').innerText()).match(/из (\d+)/)![1]);
@@ -117,11 +118,18 @@ async function scanFrames(source:Page,receiver:Page){
   },src);
   if(i<count-1){
    await expect(receiver.getByRole('dialog',{name:'Сканировать прямой обмен'}).getByRole('status')).toContainText(`Прочитано частей: ${i+1} из ${count}`);
+   if(resume&&i===0){
+    await receiver.getByRole('dialog',{name:'Сканировать прямой обмен'}).getByRole('button',{name:'Закрыть',exact:true}).click();
+    expect(await receiver.evaluate(()=>(window as any).__qrCamera.stream.getTracks().every((t:MediaStreamTrack)=>t.readyState==='ended'))).toBe(true);
+    await camera(receiver);await receiver.getByRole('button',{name:'Сканировать QR-код',exact:true}).click();
+    await expect(receiver.getByRole('dialog',{name:'Сканировать прямой обмен'}).getByRole('status')).toContainText(`Уже прочитано частей: 1 из ${count}`);
+   }
    await source.getByRole('button',{name:'Следующая часть QR',exact:true}).click();await expect(img).not.toHaveAttribute('src',src!);
   }
  }
- await expect(receiver.getByRole('dialog',{name:'Сканировать прямой обмен'})).toHaveCount(0);
+ await expect(receiver.getByRole('heading',{name:'Код прочитан',exact:true})).toBeVisible();
  expect(await receiver.evaluate(()=>(window as any).__qrCamera.stream.getTracks().every((t:MediaStreamTrack)=>t.readyState==='ended'))).toBe(true);
+ await receiver.getByRole('button',{name:'Продолжить подключение',exact:true}).click();await expect(receiver.getByRole('dialog',{name:'Сканировать прямой обмен'})).toHaveCount(0);
 }
 test('scans a defocused camera video in both directions, supports manual QR navigation, and releases cameras',async({browser})=>{
  const ca=await browser.newContext(),cb=await browser.newContext({viewport:{width:428,height:926},isMobile:true,hasTouch:true});const a=await ca.newPage(),b=await cb.newPage();
@@ -129,8 +137,47 @@ test('scans a defocused camera video in both directions, supports manual QR navi
   await boot(a,'Компьютер');await boot(b,'Телефон');await seed(a,'a',2);
   await a.getByRole('button',{name:'Новое подключение',exact:true}).click();await a.getByRole('button',{name:'Создать приглашение',exact:true}).click();await expect(a.getByRole('button',{name:'Пауза QR',exact:true})).toBeVisible();
   await b.getByRole('button',{name:'Новое подключение',exact:true}).click();await b.getByRole('button',{name:'У меня есть код',exact:true}).click();
-  await scanFrames(a,b);await expect(b.getByLabel('Ответный код',{exact:true})).toHaveValue(/^recall-peer:1:/);
+  await scanFrames(a,b,true);await expect(b.getByLabel('Ответный код',{exact:true})).toHaveValue(/^recall-peer:1:/);
   await scanFrames(b,a);await expect(a.getByRole('button',{name:'Объединить данные',exact:true})).toBeVisible();await expect(b.getByRole('button',{name:'Объединить данные',exact:true})).toBeVisible();
   await finish(a,b);expect((await data(b)).events).toEqual((await data(a)).events);
+ }finally{await ca.close();await cb.close();}
+});
+
+test('connects through invitation and answer files without requesting a camera, and recovers from a wrong file',async({browser})=>{
+ const ca=await browser.newContext(),cb=await browser.newContext({viewport:{width:428,height:926},isMobile:true,hasTouch:true});const a=await ca.newPage(),b=await cb.newPage();
+ for(const context of [ca,cb])await context.addInitScript(()=>{(window as any).__cameraRequests=0;navigator.mediaDevices.getUserMedia=async()=>{(window as any).__cameraRequests++;throw new DOMException('No webcam','NotFoundError');};});
+ try{
+  await boot(a,'Без камеры');await boot(b,'Телефон');await seed(b,'phone',2);
+  await a.getByRole('button',{name:'Новое подключение',exact:true}).click();await a.getByRole('button',{name:'Создать приглашение',exact:true}).click();await expect(a.getByLabel('Код приглашения',{exact:true})).toHaveValue(/^recall-peer:1:/);
+  const offerPromise=a.waitForEvent('download');await a.getByRole('button',{name:'Скачать файл приглашения',exact:true}).click();const offer=await offerPromise;
+  await b.getByRole('button',{name:'Новое подключение',exact:true}).click();await b.getByRole('button',{name:'У меня есть код',exact:true}).click();
+  const offerPath=await offer.path();if(!offerPath)throw Error('No invitation file');await b.getByLabel('Файл подключения Recall',{exact:true}).setInputFiles(offerPath);
+  await expect(b.getByLabel('Ответный код',{exact:true})).toHaveValue(/^recall-peer:1:/);await expect(b.getByRole('dialog',{name:'Прямой обмен'}).getByText('Камера на ПК не нужна.',{exact:false})).toBeVisible();
+  await a.getByLabel('Файл подключения Recall',{exact:true}).setInputFiles({name:'wrong.json',mimeType:'application/json',buffer:Buffer.from('{"format":"recall-archive","version":1}')});await expect(a.getByRole('alert')).toContainText('не файл подключения');
+  const answerPromise=b.waitForEvent('download');await b.getByRole('button',{name:'Скачать файл ответа',exact:true}).click();const answer=await answerPromise;const path=await answer.path();if(!path)throw Error('No answer file');
+  await a.getByLabel('Файл подключения Recall',{exact:true}).setInputFiles(path);
+  await expect(a.getByRole('button',{name:'Объединить данные',exact:true})).toBeVisible();await expect(b.getByRole('button',{name:'Объединить данные',exact:true})).toBeVisible();
+  await finish(a,b);expect((await data(a)).events).toEqual((await data(b)).events);expect(await a.evaluate(()=>(window as any).__cameraRequests)).toBe(0);expect(await b.evaluate(()=>(window as any).__cameraRequests)).toBe(0);
+ }finally{await ca.close();await cb.close();}
+});
+
+test('keeps a phone pairing alive while sharing its answer file and returning from another app after two minutes',async({browser})=>{
+ const ca=await browser.newContext(),cb=await browser.newContext();const a=await ca.newPage(),b=await cb.newPage();
+ await cb.addInitScript(()=>{
+  Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>true});
+  Object.defineProperty(navigator,'share',{configurable:true,value:async(value:ShareData)=>{
+   const file=value.files![0];(window as any).__answerFile={name:file.name,text:await file.text()};
+   Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});document.dispatchEvent(new Event('visibilitychange'));window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true}));
+  }});
+ });
+ try{
+  await b.clock.install();await boot(a,'ПК');await boot(b,'Телефон');await seed(b,'phone',2);
+  await a.getByRole('button',{name:'Новое подключение',exact:true}).click();await a.getByRole('button',{name:'Создать приглашение',exact:true}).click();await expect(a.getByLabel('Код приглашения',{exact:true})).toHaveValue(/^recall-peer:1:/);
+  await b.getByRole('button',{name:'Новое подключение',exact:true}).click();await b.getByRole('button',{name:'У меня есть код',exact:true}).click();await b.getByLabel('Вставить приглашение',{exact:true}).fill(await a.getByLabel('Код приглашения',{exact:true}).inputValue());await b.getByRole('button',{name:'Создать ответный код',exact:true}).click();
+  await expect(b.getByLabel('Ответный код',{exact:true})).toHaveValue(/^recall-peer:1:/);await b.getByRole('button',{name:'Передать файл ответа',exact:true}).click();await expect.poll(()=>b.evaluate(()=>Boolean((window as any).__answerFile))).toBe(true);
+  await b.clock.fastForward(120000);await b.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));});
+  await expect(b.locator('.peer-progress.warning')).toHaveCount(0);await expect(b.getByLabel('Ответный код',{exact:true})).toHaveValue(/^recall-peer:1:/);
+  const file=await b.evaluate(()=>(window as any).__answerFile);await a.getByLabel('Файл подключения Recall',{exact:true}).setInputFiles({name:file.name,mimeType:'application/json',buffer:Buffer.from(file.text)});
+  await expect(a.getByRole('button',{name:'Объединить данные',exact:true})).toBeVisible();await expect(b.getByRole('button',{name:'Объединить данные',exact:true})).toBeVisible();await finish(a,b);expect((await data(a)).events).toEqual((await data(b)).events);
  }finally{await ca.close();await cb.close();}
 });

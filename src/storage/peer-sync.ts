@@ -114,6 +114,7 @@ export class PeerSession {
  private session:string=crypto.randomUUID();private expires=Date.now()+10*60_000;
  private deadline:ReturnType<typeof setTimeout>;private idle?:ReturnType<typeof setTimeout>;
  private cancelGather?:()=>void;
+ get connected(){return Boolean(this.exchange);}
  constructor(private progress:(value:PeerProgress)=>void,private expectedId?:string){
   if(!window.isSecureContext||!window.RTCPeerConnection)throw Error('Нужен современный браузер и HTTPS (или localhost на ПК)');
   // Only LAN candidates: no STUN, TURN, signalling service or external media requests.
@@ -131,7 +132,7 @@ export class PeerSession {
    this.session=invitation.session;this.expires=invitation.expires;this.peer=invitation;
    this.progress({stage:'preparing',text:'Готовим ответный код',peer:invitation.name});
    await this.pc.setRemoteDescription({type:'offer',sdp:invitation.sdp});await this.pc.setLocalDescription(await this.pc.createAnswer());await this.gather();this.ensureActive();
-   this.invitation=await makeInvitation('answer',this.session,this.expires,this.pc.localDescription!.sdp);this.ensureActive();this.progress({stage:'connecting',text:'Ответный код готов. Покажи его первому устройству.',peer:invitation.name});return encodeInvitation(this.invitation);
+   this.invitation=await makeInvitation('answer',this.session,this.expires,this.pc.localDescription!.sdp);this.ensureActive();this.progress({stage:'connecting',text:'Ответ готов. Передай файл ответа первому устройству или вставь там код текстом.',peer:invitation.name});return encodeInvitation(this.invitation);
   }catch(e){this.fail(e as Error);throw e;}
  }
  async complete(code:string){
