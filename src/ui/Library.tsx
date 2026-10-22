@@ -1,3 +1,4 @@
+import {ChoiceOptions} from './ChoiceOptions';
 import { useMemo, useState } from 'react';
 import { Plus, ArrowRight, Settings2, Download, Search, Trash2, RotateCcw, FileInput, CheckCircle2, AlertTriangle, BookOpen, Repeat2, Eye } from 'lucide-react';
 import type { Snapshot, Deck, CardView, Card } from '../domain/types';
@@ -86,7 +87,7 @@ export function Library({s,deckFilter,setDeckFilter,newCard,edit,importCards,not
  const trashed=useMemo(()=>s.cards.filter(c=>c.deleted&&!c.purged),[s.cards]);
  const list=useMemo(()=>(mode==='trash'?trashed:existingCards.filter(c=>!c.deleted)).filter(c=>
   (deckFilter==='all'||c.deckId===deckFilter)&&(mode!=='conflicts'||c.conflicts.length>0)&&(mode!=='attention'||attention.has(c.id))&&
-  [c.title,c.front,c.back,c.tags.join(' ')].join(' ').toLowerCase().includes(search.toLowerCase())
+  [c.title,c.front,c.back,c.tags.join(' '),...(c.options||[]).flatMap(o=>[o.text,o.feedback||''])].join(' ').toLowerCase().includes(search.toLowerCase())
  ),[existingCards,trashed,mode,deckFilter,search,attention]);
  const previewable=list.filter(c=>!c.conflicts.length);
  const preview=(id=previewable[0]?.id)=>{if(id)setReader({ids:previewable.map(c=>c.id),initialId:id});};
@@ -166,7 +167,7 @@ export function Library({s,deckFilter,setDeckFilter,newCard,edit,importCards,not
     <input type="checkbox" aria-label={'Выбрать '+c.title} checked={selected.has(c.id)} onChange={()=>toggle(c.id)}/>
     <button className="card-question" disabled={c.deleted} onClick={()=>c.conflicts.length?setConflict(c):edit(c)}>
      <strong>{c.title||cleanText(c.front).slice(0,80)}</strong><small>{cleanText(c.front).slice(0,95)}</small>
-     <div className="card-tags">{attention.has(c.id)&&<span className="attention-label">Рассмотреть</span>}<span>{({basic:'Вопрос–ответ',input:'Ввод',cloze:'Пропуск'})[c.type]}</span>{c.conflicts.length>0&&<span className="conflict-tag"><AlertTriangle size={12}/>Две версии</span>}{c.tags.filter(Boolean).slice(0,3).map(t=><span key={t}>#{t}</span>)}</div>
+     <div className="card-tags">{attention.has(c.id)&&<span className="attention-label">Рассмотреть</span>}<span>{({basic:'Вопрос–ответ',input:'Ввод',cloze:'Пропуск',choice:'Выбор ответа'})[c.type]}</span>{c.conflicts.length>0&&<span className="conflict-tag"><AlertTriangle size={12}/>Две версии</span>}{c.tags.filter(Boolean).slice(0,3).map(t=><span key={t}>#{t}</span>)}</div>
     </button>
     <span className="card-deck" style={{color:allDecks.get(c.deckId)?.color}}>{allDecks.get(c.deckId)?.name||'Удалённая колода'}</span>
     <span className="card-due">{c.deleted?decks.has(c.deckId)?'В корзине':'Сначала восстанови колоду':c.conflicts.length?'Выбери версию':c.memory?c.memory.due<=Date.now()?'Пора повторить':formatDate(c.memory.due):'Новая'}</span>
@@ -184,6 +185,6 @@ export function Library({s,deckFilter,setDeckFilter,newCard,edit,importCards,not
    </div>
    <footer className="dialog-footer"><Button kind="secondary" disabled={busy} onClick={()=>setPendingDelete(null)}>Отмена</Button><Button kind="danger" disabled={busy||!deleting.length} onClick={removeForever}><Trash2 size={16}/>{busy?'Удаляем…':'Удалить навсегда'}</Button></footer>
   </Dialog>}
-  {conflict&&<Dialog title="Выбери версию карточки" onClose={()=>setConflict(null)} wide><div className="form-body"><p>На устройствах вопрос изменён по-разному. Обе версии сохранены в журнале.</p><div className="conflict-grid">{conflict.conflicts.map(e=><article key={e.id}><small>{formatDate(e.at)} · устройство {e.deviceId.slice(0,8)}</small><Markdown>{String(e.payload.front)}</Markdown><hr/><Markdown>{String(e.payload.back)}</Markdown><Button kind="secondary" onClick={()=>resolve(e.payload as unknown as Card)}>Использовать эту версию</Button></article>)}</div></div></Dialog>}
+  {conflict&&<Dialog title="Выбери версию карточки" onClose={()=>setConflict(null)} wide><div className="form-body"><p>На устройствах вопрос изменён по-разному. Обе версии сохранены в журнале.</p><div className="conflict-grid">{conflict.conflicts.map(e=><article key={e.id}><small>{formatDate(e.at)} · устройство {e.deviceId.slice(0,8)}</small><Markdown>{String(e.payload.front)}</Markdown>{e.payload.type==='choice'&&<ChoiceOptions options={(e.payload as unknown as Card).options||[]} readOnly/>}<hr/><Markdown>{String(e.payload.back)}</Markdown><Button kind="secondary" onClick={()=>resolve(e.payload as unknown as Card)}>Использовать эту версию</Button></article>)}</div></div></Dialog>}
  </>;
 }

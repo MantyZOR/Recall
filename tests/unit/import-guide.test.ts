@@ -8,7 +8,7 @@ import { deck } from '../fixtures';
 describe('downloadable import handbook',()=>{
  it('provides importable templates and examples with math, aliases and correctly fenced code',()=>{
   const template=parseMarkdown(IMPORT_TEMPLATE),sample=parseMarkdown(IMPORT_EXAMPLE);
-  expect(template.errors).toEqual([]);expect(template.cards).toHaveLength(3);
+  expect(template.errors).toEqual([]);expect(template.cards).toHaveLength(4);expect(template.cards[3].type).toBe('choice');
   expect(sample.errors).toEqual([]);expect(sample.cards).toHaveLength(6);
   expect(checkTypedAnswer('ЖИЗНЕСТОЙКИЙ',{...sample.cards[0],id:'word',deckId:deck.id})).toBe(true);
   expect(sample.cards[1].back).toContain('\\frac');
@@ -21,7 +21,8 @@ describe('downloadable import handbook',()=>{
  });
  it('ships the current handbook, AI prompt and UTF-8 examples in a distinct kit for unpacking',()=>{
   const files=unzipSync(createImportKit());
-  expect(Object.keys(files).sort()).toEqual(['README.md','ai-prompt.md','examples/code-and-math.md','import-guide.md','template.md']);
+  expect(Object.keys(files).sort()).toEqual(['README.md','ai-prompt.md','examples/choice.md','examples/code-and-math.md','import-guide.md','template.md']);
+  const choices=parseMarkdown(strFromU8(files['examples/choice.md']));expect(choices.errors).toEqual([]);expect(choices.cards).toHaveLength(2);expect(choices.cards[1].options?.filter(o=>o.correct)).toHaveLength(2);
   expect(strFromU8(files['README.md'])).toContain('Сам этот ZIP не предназначен для импорта');
   expect(strFromU8(files['template.md'])).toBe(IMPORT_TEMPLATE);
   expect(strFromU8(files['examples/code-and-math.md'])).toBe(IMPORT_EXAMPLE);

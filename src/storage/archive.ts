@@ -4,6 +4,7 @@ import { validateEvents, assetIds } from '../domain/protocol.mjs';
 import { ENGINE_INFO } from '../domain/model-info.mjs';
 import type { Attachment, Operation, Deck, Card } from '../domain/types';
 import { exportMarkdown, parseMarkdown, type ParsedMarkdown } from '../domain/markdown';
+import {choiceAnswerMarkdown} from '../domain/choice';
 export function download(name:string,body:string|Blob|Uint8Array,type='text/plain;charset=utf-8'){
  const blob=body instanceof Blob?body:typeof body==='string'?new Blob([body],{type}):new Blob([body.slice().buffer as ArrayBuffer],{type});
  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
@@ -54,7 +55,7 @@ export async function readImport(file:File):Promise<ArchivePreview|MarkdownPrevi
  return {parsed:parseMarkdown(source),attachments};
 }
 export async function importArchive(preview:ArchivePreview){await merge(preview.events,preview.attachments);return snapshot();}
-export function exportTSV(deck:Deck,cards:Card[]){const quote=(s:string)=>'"'+s.replaceAll('"','""')+'"';download(deck.name+'.tsv',['Вопрос\tОтвет\tТип\tТеги',...cards.map(c=>[c.front,c.back,c.type,c.tags.join(', ')].map(quote).join('\t'))].join('\n'),'text/tab-separated-values;charset=utf-8');}
+export function exportTSV(deck:Deck,cards:Card[]){const quote=(s:string)=>'"'+s.replaceAll('"','""')+'"';download(deck.name+'.tsv',['Вопрос\tОтвет\tТип\tТеги',...cards.map(c=>[c.front+(c.type==='choice'?'\n\n'+(c.options||[]).map(o=>'- '+o.text).join('\n'):''),c.type==='choice'?choiceAnswerMarkdown(c.options)+(c.back?'\n\n'+c.back:''):c.back,c.type,c.tags.join(', ')].map(quote).join('\t'))].join('\n'),'text/tab-separated-values;charset=utf-8');}
 
 
 

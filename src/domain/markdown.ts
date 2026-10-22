@@ -1,8 +1,9 @@
 import { parse, stringify } from 'yaml';
-import type { Card, CardType, Deck } from './types';
+import type { Card, CardType, Deck, ChoiceOption } from './types';
+import {choiceProblem} from './choice';
 export type ImportedCard=Omit<Card,'id'|'deckId'>;
 export interface ParsedMarkdown{deck:Partial<Deck>;cards:ImportedCard[];errors:string[];warnings:string[];}
-const typeNames:Record<string,CardType>={basic:'basic',input:'input',cloze:'cloze','вопрос':'basic','ввод':'input','пропуски':'cloze'};
+const typeNames:Record<string,CardType>={basic:'basic',input:'input',cloze:'cloze',choice:'choice','вопрос':'basic','ввод':'input','пропуски':'cloze','выбор':'choice'};
 export const MARKDOWN_EXAMPLE=String.raw`---
 deck: Английский и не только
 description: Мои первые карточки
@@ -39,26 +40,31 @@ export function parseMarkdown(source:string):ParsedMarkdown {
  const result:ParsedMarkdown={deck:{},cards:[],errors:[],warnings:[]};source=source.replace(/^\uFEFF/,'').replace(/\r\n/g,'\n');
  const front=source.match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
  if(front){try{const meta=parse(front[1],{maxAliasCount:0});if(meta&&typeof meta==='object'){result.deck={name:String(meta.deck||meta.name||'Новая колода'),description:String(meta.description||''),retention:typeof meta.retention==='number'?meta.retention:.9};}}catch{result.errors.push('Не удалось прочитать заголовок YAML');}source=source.slice(front[0].length);}
- let section:'front'|'back'|'notes'|'aliases'|'tags'='front',card:ImportedCard|undefined,fence='',startLine=0;
+ let section:'front'|'back'|'notes'|'aliases'|'tags'|'option'|'feedback'='front',card:ImportedCard|undefined,option:ChoiceOption|undefined,fence='',startLine=0;
  const finish=()=>{if(!card)return;card.front=card.front.trim();card.back=card.back.trim();card.notes=card.notes.trim();
   if(!card.front)card.front=card.title;
   if(card.type==='cloze'){const groups=clozeGroups(card.front);if(groups.some(g=>g<1||g>99))result.errors.push('Строка '+startLine+': номера пропусков — от 1 до 99');else if(!groups.length)result.errors.push('Строка '+startLine+': нет пропусков {{c1::ответ}}');else {const siblingId=crypto.randomUUID();for(const clozeIndex of groups)result.cards.push({...card,clozeIndex,siblingId});}}
+  else if(card.type==='choice'){for(const o of card.options||[]){o.text=o.text.trim();if(o.feedback)o.feedback=o.feedback.trim();}const problem=choiceProblem(card.options);if(problem)result.errors.push('Строка '+startLine+': '+problem);else result.cards.push(card);}
   else if(!card.back)result.errors.push('Строка '+startLine+': отсутствует :::answer или ответ');else result.cards.push(card);
  };
  source.split('\n').forEach((line,i)=>{
   const fm=line.match(/^\s*(`{3,}|~{3,})/);if(fm){if(!fence)fence=fm[1];else if(fence[0]===fm[1][0]&&fm[1].length>=fence.length&&line.trim()===fm[1])fence='';}
   const heading=!fence&&line.match(/^## (?:\[([^\]]+)\] )?(.*)$/);
-  if(heading){finish();const type=typeNames[(heading[1]||'basic').toLowerCase()];if(!type)result.errors.push('Строка '+(i+1)+': неизвестный тип '+heading[1]);card={title:heading[2].trim(),type:type||'basic',front:'',back:'',notes:'',aliases:[],tags:[]};section='front';startLine=i+1;return;}
-  const divider=!fence&&line.match(/^:::(answer|notes|aliases|tags)\s*$/);
-  if(divider&&card){section=(divider[1]==='answer'?'back':divider[1]) as typeof section;return;}
-  if(card){if(section==='aliases')card.aliases.push(...line.split(';').map(x=>x.trim()).filter(Boolean));else if(section==='tags')card.tags.push(...line.split(',').map(x=>x.trim()).filter(Boolean));else card[section]+=line+'\n';}
+  if(heading){finish();const type=typeNames[(heading[1]||'basic').toLowerCase()];if(!type)result.errors.push('Строка '+(i+1)+': неизвестный тип '+heading[1]);card={title:heading[2].trim(),type:type||'basic',front:'',back:'',notes:'',aliases:[],tags:[],...(type==='choice'?{options:[]}: {})};option=undefined;section='front';startLine=i+1;return;}
+  const divider=!fence&&line.match(/^:::(answer|notes|aliases|tags|feedback|option(?: (correct|wrong))?)\s*$/);
+  if(divider&&card){
+   if(divider[1].startsWith('option')){if(card.type!=='choice'||!divider[2]){result.errors.push('Строка '+(i+1)+': используй :::option correct или :::option wrong в карточке choice');return;}option={id:'o'+((card.options?.length||0)+1),text:'',correct:divider[2]==='correct'};card.options!.push(option);section='option';}
+   else if(divider[1]==='feedback'){if(!option||!['option','feedback'].includes(section)){result.errors.push('Строка '+(i+1)+': :::feedback должен идти сразу после варианта ответа');return;}section='feedback';}
+   else section=(divider[1]==='answer'?'back':divider[1]) as typeof section;return;
+  }
+  if(card){if(section==='option'&&option)option.text+=line+'\n';else if(section==='feedback'&&option)option.feedback=(option.feedback||'')+line+'\n';else if(section==='aliases')card.aliases.push(...line.split(';').map(x=>x.trim()).filter(Boolean));else if(section==='tags')card.tags.push(...line.split(',').map(x=>x.trim()).filter(Boolean));else if(section!=='option'&&section!=='feedback')card[section]+=line+'\n';}
  });
  finish();if(!result.cards.length&&!result.errors.length)result.errors.push('Карточки начинаются с ## [basic] Заголовок. Скачай пример формата.');
  return result;
 }
 export function exportMarkdown(deck:Deck,cards:Card[]) {
  const header='---\n'+stringify({deck:deck.name,description:deck.description,retention:deck.retention})+'---\n\n',seen=new Set<string>();
- return header+cards.filter(c=>{if(c.type!=='cloze'||!c.siblingId)return true;if(seen.has(c.siblingId))return false;seen.add(c.siblingId);return true;}).map(c=>'## ['+c.type+'] '+c.title+'\n'+c.front+(c.back?'\n:::answer\n'+c.back:'')+(c.notes?'\n:::notes\n'+c.notes:'')+(c.aliases.length?'\n:::aliases\n'+c.aliases.join('; '):'')+(c.tags.length?'\n:::tags\n'+c.tags.join(', '):'')+'\n').join('\n');
+ return header+cards.filter(c=>{if(c.type!=='cloze'||!c.siblingId)return true;if(seen.has(c.siblingId))return false;seen.add(c.siblingId);return true;}).map(c=>'## ['+c.type+'] '+c.title+'\n'+c.front+(c.type==='choice'?(c.options||[]).map(o=>'\n:::option '+(o.correct?'correct':'wrong')+'\n'+o.text+(o.feedback?'\n:::feedback\n'+o.feedback:'')).join(''):'')+(c.back?'\n:::answer\n'+c.back:'')+(c.notes?'\n:::notes\n'+c.notes:'')+(c.aliases.length?'\n:::aliases\n'+c.aliases.join('; '):'')+(c.tags.length?'\n:::tags\n'+c.tags.join(', '):'')+'\n').join('\n');
 }
 export function normalizedAnswer(value:string){return value.normalize('NFC').trim().toLocaleLowerCase('ru').replace(/\s+/g,' ').replace(/ё/g,'е');}
 export function checkTypedAnswer(answer:string,card:Card){const expected=card.type==='cloze'?clozeAnswer(card.front,card.clozeIndex||1):card.back;if(expected.length>80||expected.includes('\n')||/[`$]/.test(expected))return null;return [expected,...card.aliases].some(v=>normalizedAnswer(v)===normalizedAnswer(answer));}

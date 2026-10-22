@@ -3,7 +3,9 @@ import { append, db, snapshot } from '../storage/db';
 import { entityHeads, deletedDecks, purgedDeckIds } from './reducer';
 import { clozeGroups, type ImportedCard } from './markdown';
 import { attentionByCard } from './attention';
-export function cardData(c:Card):Card {return {id:c.id,deckId:c.deckId,title:c.title,type:c.type,front:c.front,back:c.back,notes:c.notes,aliases:c.aliases,tags:c.tags,...(c.clozeIndex?{clozeIndex:c.clozeIndex}:{}),...(c.siblingId?{siblingId:c.siblingId}:{})};}
+import {choiceProblem} from './choice';
+export function cardData(c:Card):Card {return {id:c.id,deckId:c.deckId,title:c.title,type:c.type,front:c.front,back:c.back,notes:c.notes,aliases:c.aliases,tags:c.tags,...(c.clozeIndex?{clozeIndex:c.clozeIndex}:{}),...(c.siblingId?{siblingId:c.siblingId}:{}),...(c.type==='choice'?{options:c.options}: {})};}
+const importKey=(c:Pick<Card,'type'|'front'|'back'|'clozeIndex'|'options'>)=>JSON.stringify([c.type,c.front,c.back,c.clozeIndex,c.type==='choice'?c.options?.map(o=>({text:o.text,correct:o.correct,feedback:o.feedback||''})).sort((a,b)=>a.text.localeCompare(b.text)):undefined]);
 export async function saveDeck(deck:Deck,s:Snapshot){
  await db.transaction('rw',db.events,db.meta,async()=>{
   if(purgedDeckIds((await snapshot()).events).has(deck.id))throw new Error('Колода уже удалена навсегда. Создай новую колоду.');
@@ -11,6 +13,7 @@ export async function saveDeck(deck:Deck,s:Snapshot){
  });
 }
 export async function saveCard(data:Card,base:CardView|undefined,s:Snapshot,resetMemory=false){
+ if(data.type==='choice'){const problem=choiceProblem(data.options);if(problem)throw Error(problem);}
  await db.transaction('rw',db.events,db.meta,async()=>{
   const current=await snapshot();
   if(base&&current.cards.some(c=>c.id===base.id&&c.purged))throw new Error('Карточка уже удалена навсегда. Изменения не сохранены.');
@@ -30,8 +33,8 @@ export async function importMarkdownCards(cards:ImportedCard[],deck:Deck,newDeck
   if(newDeck)await saveDeck(deck,s);
   else if(!s.decks.some(d=>d.id===deck.id))throw new Error('Колода уже удалена. Выбери другую колоду для импорта.');
   await db.attachments.bulkPut(assets);
-  const keys=new Set(s.cards.filter(c=>c.deckId===deck.id&&!c.deleted).map(c=>JSON.stringify([c.type,c.front,c.back,c.clozeIndex])));
-  for(const c of cards){const key=JSON.stringify([c.type,c.front,c.back,c.clozeIndex]);if(keys.has(key)){skipped++;continue;}keys.add(key);const id=crypto.randomUUID();await append('card.put',id,{...c,id,deckId:deck.id});added++;}
+  const keys=new Set(s.cards.filter(c=>c.deckId===deck.id&&!c.deleted).map(importKey));
+  for(const c of cards){const key=importKey(c);if(keys.has(key)){skipped++;continue;}keys.add(key);const id=crypto.randomUUID();await append('card.put',id,{...c,id,deckId:deck.id});added++;}
  });return {added,skipped};
 }
 export async function addExamples(s:Snapshot){

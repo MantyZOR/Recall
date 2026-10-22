@@ -11,6 +11,8 @@ import { Button, Progress, formatCount } from './common';
 import { Markdown } from './Markdown';
 import { CardReader } from './CardReader';
 import { useStudyDock } from './use-study-dock';
+import {checkChoiceAnswer,shuffleChoices} from '../domain/choice';
+import {ChoiceOptions} from './ChoiceOptions';
 
 type Props={s:Snapshot;ids:string[];context:Context;minutes:number;onExit:()=>void;edit:(c:CardView)=>void;notify:(s:string,error?:boolean)=>void;};
 const RATING_NAMES=['Не вспомнил','Трудно','Нормально','Легко'];
@@ -22,6 +24,7 @@ export function Session({s,ids,context,minutes,onExit,edit,notify}:Props){
  const latest=useRef(s);if(s.events.length>=latest.current.events.length)latest.current=s;
  const [queue,setQueue]=useState(ids),[index,setIndex]=useState(0),[shown,setShown]=useState(false),[typed,setTyped]=useState(''),[hints,setHints]=useState(false),[busy,setBusy]=useState(false);
  const [card,setCard]=useState<CardView|undefined>(()=>s.cards.find(c=>c.id===ids[0])),[answeredAt,setAnsweredAt]=useState(0),[prePrediction,setPrediction]=useState<number|null>(null),[duration,setDuration]=useState(0);
+ const [selected,setSelected]=useState<string[]>([]),[optionOrder,setOptionOrder]=useState(()=>shuffleChoices(card?.options||[]));
  const [introducing,setIntroducing]=useState(()=>needsIntroduction(s.cards.find(c=>c.id===ids[0]),context));
  const [readings,setReadings]=useState<{cardId:string;duration:number}[]>([]);
  const [results,setResults]=useState<{id:string;cardId:string;rating:Rating;hints:boolean;duration:number;index:number;queuedAgain:boolean}[]>([]),[tick,setTick]=useState(Date.now()),[budget,setBudget]=useState(minutes);
@@ -37,22 +40,26 @@ export function Session({s,ids,context,minutes,onExit,edit,notify}:Props){
   const c=latest.current.cards.find(c=>c.id===queue[index]);presented.current=capture(c,latest.current);
   setCard(c);setIntroducing(needsIntroduction(c,context)&&!skipped.current.has(c?.id+':'+c?.version));
   setShown(false);setTyped('');setHints(false);setAnsweredAt(0);setPrediction(null);started.current=performance.now();
+  setSelected([]);setOptionOrder(shuffleChoices(c?.options||[]));
   if(window.matchMedia('(max-width:820px)').matches)window.scrollTo({top:0,behavior:'auto'});
  },[index,queue[index],liveVersion]);
  useEffect(()=>{const id=setInterval(()=>setTick(Date.now()),1000);return()=>clearInterval(id);},[]);
  const {deck,weights,retention}=presented.current;
  const spent=(tick-sessionStarted.current)/60000,timeUp=spent>=budget&&(results.length>0||readings.length>0),done=index>=queue.length||timeUp;
  const controls=useStudyDock(!done&&Boolean(card&&deck));
- const correct=results.filter(r=>r.rating>1&&!r.hints).length,auto=card&&card.type==='input'&&s.settings.inputMode==='auto-short'?checkTypedAnswer(typed,card):null;
+ const correct=results.filter(r=>r.rating>1&&!r.hints).length,auto=card?.type==='choice'&&shown?checkChoiceAnswer(card.options||[],selected):card&&card.type==='input'&&s.settings.inputMode==='auto-short'?checkTypedAnswer(typed,card):null;
  useEffect(()=>{
   const answer=answerSection.current;
+  // Choice results appear inline in the options; keep them in view instead of
+  // jumping past them to the general explanation below the entire list.
+  if(card?.type==='choice')return;
   if(!shown||introducing||!answer||!window.matchMedia('(max-width:820px)').matches)return;
   const section=answer.getBoundingClientRect(),dock=controls.current?.getBoundingClientRect();
   const viewport=window.visualViewport,visibleBottom=Math.min(dock?.top??window.innerHeight,viewport?viewport.offsetTop+viewport.height:window.innerHeight);
   if(section.top+64<=visibleBottom)return;
   const header=answer.closest('.session')?.querySelector('.session-header')?.getBoundingClientRect();
   window.scrollTo({top:Math.max(0,window.scrollY+section.top-62-(header?.height||0)-12),behavior:'auto'});
- },[shown,introducing,controls]);
+ },[shown,introducing,controls,card?.type]);
 
  const introduce=async()=>{
   if(!introducing||!card||!deck||saving.current||done||context==='exam')return;
@@ -69,10 +76,11 @@ export function Session({s,ids,context,minutes,onExit,edit,notify}:Props){
  const skipIntroduction=()=>{
   if(!introducing||!card||saving.current)return;
   skipped.current.add(card.id+':'+card.version);setIntroducing(false);setShown(false);started.current=performance.now();
+  setSelected([]);setOptionOrder(shuffleChoices(card.options||[]));
   if(window.matchMedia('(max-width:820px)').matches)window.scrollTo({top:0,behavior:'auto'});
  };
  const reveal=()=>{
-  if(!card||shown||introducing||saving.current)return;
+  if(!card||shown||introducing||saving.current||card.type==='choice'&&!selected.length)return;
   const at=Date.now();setAnsweredAt(at);setDuration(Math.min(86400000,Math.max(0,performance.now()-started.current)));
   setPrediction(prediction(card.memory,at,deck?.algorithm||'fsrs7',weights));setShown(true);
  };
@@ -83,10 +91,10 @@ export function Session({s,ids,context,minutes,onExit,edit,notify}:Props){
    const live=latest.current.cards.find(c=>c.id===card.id);
    if(live?.deleted||live?.conflicts.length||live?.version!==card.version)throw new Error('Карточка изменилась во время ответа. Закрой сессию и открой её заново.');
    const previous=presented.current.previous;
-   const actual:Rating=hints?1:rating,elapsed=card.memory?Math.max(0,(answeredAt-card.memory.lastAt)/DAY):0;
+   const actual:Rating=hints||card.type==='choice'&&auto===false?1:rating,elapsed=card.memory?Math.max(0,(answeredAt-card.memory.lastAt)/DAY):0;
    const learningAttempt=!card.memory&&card.introductions.length>0;
    const actualContext=context==='review'&&(learningAttempt||results.some(r=>r.cardId===card.id))?'practice':context;
-   const payload:Review={cardId:card.id,cardVersion:card.version,rating:actual,elapsedDays:elapsed,durationMs:duration,context:actualContext,hints,model:deck.algorithm==='fsrs7'?'FSRS-7/rust-scalar-v1':MODEL_NAMES[deck.algorithm],paramsId:presented.current.paramsId,retention,prediction:prePrediction,previousReviewIds:previous,sessionId:sessionId.current};
+   const payload:Review={cardId:card.id,cardVersion:card.version,rating:actual,elapsedDays:elapsed,durationMs:duration,context:actualContext,hints,model:deck.algorithm==='fsrs7'?'FSRS-7/rust-scalar-v1':MODEL_NAMES[deck.algorithm],paramsId:presented.current.paramsId,retention,prediction:prePrediction,previousReviewIds:previous,sessionId:sessionId.current,...(card.type==='choice'?{choiceAnswer:{selectedIds:[...selected],correct:auto===true}}:{})};
    const deps=[...card.heads,...previous,...causalHeads(latest.current.events,card.introductions).map(e=>e.id),...presented.current.parameterEvents];
    const e=await append('review',card.id,payload,deps,answeredAt);latest.current=await snapshot();
    const count=againCounts.current.get(card.id)||0,queuedAgain=actual===1&&context!=='exam'&&count<2;
@@ -131,10 +139,11 @@ export function Session({s,ids,context,minutes,onExit,edit,notify}:Props){
   <div className="session-progress"><Progress value={index/queue.length*100}/><span>{index+1} / {queue.length}</span></div>
   <div className="study-card">
    <div className="study-card-top"><span className="deck-label" style={{color:deck.color}}><span style={{background:deck.color}}/>{deck.name}</span><button className="icon-button" aria-label="Редактировать текущую карточку" onClick={()=>edit(card)}><Pencil size={16}/></button></div>
-   <span className="eyebrow">{introducing?'ПЕРВИЧНОЕ ИЗУЧЕНИЕ':card.type==='input'?'НАБЕРИ СВОЙ ОТВЕТ':card.type==='cloze'?'ВОССТАНОВИ ПРОПУСК':'ПОПРОБУЙ ВСПОМНИТЬ'}</span>
+   <span className="eyebrow">{introducing?'ПЕРВИЧНОЕ ИЗУЧЕНИЕ':card.type==='choice'?'ВЫБЕРИ ПРАВИЛЬНЫЙ ОТВЕТ':card.type==='input'?'НАБЕРИ СВОЙ ОТВЕТ':card.type==='cloze'?'ВОССТАНОВИ ПРОПУСК':'ПОПРОБУЙ ВСПОМНИТЬ'}</span>
    {introducing&&<p className="introduction-copy">Сначала прочитай вопрос и ответ. Можно спокойно разобраться — оценку поставишь после самостоятельной попытки.</p>}
    {!introducing&&learningAttempt&&<p className="introduction-copy">Теперь попробуй ответить без подсказки. Это первая учебная проверка.</p>}
    <Markdown className="question-markdown">{displayFront}</Markdown>
+   {card.type==='choice'&&<ChoiceOptions options={card.options||[]} order={optionOrder} selected={selected} onChange={setSelected} revealed={shown} readOnly={introducing}/>}
    {card.type==='input'&&!shown&&!introducing&&<textarea autoFocus className="typed-answer" placeholder="Твой ответ…" rows={2} value={typed} onChange={e=>setTyped(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&checkTypedAnswer(typed,card)!==null){e.preventDefault();reveal();}}}/>}
    {(shown||introducing)&&<div ref={answerSection} className="answer-section">
     <span className="eyebrow">{introducing?'ОТВЕТ ДЛЯ ИЗУЧЕНИЯ':'ПРАВИЛЬНЫЙ ОТВЕТ'}</span>
@@ -151,9 +160,9 @@ export function Session({s,ids,context,minutes,onExit,edit,notify}:Props){
     <button className="button primary introduction-next" aria-label="Прочитал — проверить позже" disabled={busy} onClick={introduce}><strong>Прочитал</strong><span>Проверить позже</span></button>
     <button className="button secondary introduction-skip" aria-label="Уже знаю — проверить" disabled={busy} onClick={skipIntroduction}><strong>Уже знаю</strong><span>Проверить сейчас</span></button>
    </div><p className="hint">{queue.length-index>1?'Вернёмся к вопросу после нескольких других карточек.':'Следом попробуем ответить без подсказки.'}</p></>
-   :!shown?<><Button className="reveal-button" onClick={reveal}>Показать ответ<span>↵</span></Button><p className="hint">Сначала сделай самостоятельную попытку вспомнить.</p></>
-   :<>{hints&&<p className="warning-text">С подсказкой ответ не считается самостоятельным. Сохраним «Не вспомнил».</p>}{auto!==null&&!hints&&<p className={'auto-rating '+(auto?'correct':'incorrect')}>{auto?'Короткий ответ верный. Рекомендуем «Нормально».':'Короткий ответ отличается. Рекомендуем «Не вспомнил».'} Оценку можно уточнить.</p>}
-    <div className="rating-buttons">{choices.map((m,i)=><button key={i} aria-label={RATING_NAMES[i]+' · '+intervalLabel(m.due-(answeredAt||Date.now()))+(auto!==null&&((auto&&i===2)||(!auto&&i===0))?' · рекомендуем':'')} className={'rating rating-'+(i+1)+(auto!==null&&((auto&&i===2)||(!auto&&i===0))?' suggested':'')} disabled={busy||(hints&&i!==0)} onClick={()=>grade(i+1 as Rating)}><span className="rating-key">{i+1}</span><strong><span className="rating-name-full">{RATING_NAMES[i]}</span><span className="rating-name-compact" aria-hidden="true">{RATING_COMPACT[i]}</span></strong><span className="rating-interval">{intervalLabel(m.due-(answeredAt||Date.now()))}</span>{auto!==null&&((auto&&i===2)||(!auto&&i===0))&&<span className="rating-recommendation">Рекомендуем</span>}</button>)}</div><p className="rating-help">«Трудно» — вспомнил с усилием. «Не вспомнил» — ответ не удалось воспроизвести.</p>
+   :!shown?<><Button className="reveal-button" disabled={card.type==='choice'&&!selected.length} onClick={reveal}>{card.type==='choice'?'Проверить ответ':'Показать ответ'}<span>↵</span></Button><p className="hint">{card.type==='choice'?'Отметь варианты, затем проверь. После проверки выбор фиксируется.':'Сначала сделай самостоятельную попытку вспомнить.'}</p></>
+   :<>{hints&&<p className="warning-text">С подсказкой ответ не считается самостоятельным. Сохраним «Не вспомнил».</p>}{auto!==null&&!hints&&<p className={'auto-rating '+(auto?'correct':'incorrect')}>{card.type==='choice'?(auto?'Верно: выбраны все правильные варианты. Выбери трудность.':'Есть ошибка: пропущен правильный или выбран лишний вариант. Сохраним «Не вспомнил».'):(auto?'Короткий ответ верный. Рекомендуем «Нормально». Оценку можно уточнить.':'Короткий ответ отличается. Рекомендуем «Не вспомнил». Оценку можно уточнить.')}</p>}
+    <div className="rating-buttons">{choices.map((m,i)=><button key={i} aria-label={RATING_NAMES[i]+' · '+intervalLabel(m.due-(answeredAt||Date.now()))+(auto!==null&&((auto&&i===2)||(!auto&&i===0))?' · рекомендуем':'')} className={'rating rating-'+(i+1)+(auto!==null&&((auto&&i===2)||(!auto&&i===0))?' suggested':'')} disabled={busy||((hints||card.type==='choice'&&auto===false)&&i!==0)} onClick={()=>grade(i+1 as Rating)}><span className="rating-key">{i+1}</span><strong><span className="rating-name-full">{RATING_NAMES[i]}</span><span className="rating-name-compact" aria-hidden="true">{RATING_COMPACT[i]}</span></strong><span className="rating-interval">{intervalLabel(m.due-(answeredAt||Date.now()))}</span>{auto!==null&&((auto&&i===2)||(!auto&&i===0))&&<span className="rating-recommendation">Рекомендуем</span>}</button>)}</div><p className="rating-help">«Трудно» — вспомнил с усилием. «Не вспомнил» — ответ не удалось воспроизвести.</p>
    </>}
   </div>
   <footer className="session-footer"><span><CheckCircle2 size={14}/>{introducing?'Чтение сохраняется отдельно от оценок':'Сохранение до следующей карточки'}</span>{results.length>0&&<button className="text-button" onClick={undo} disabled={busy}><Undo2 size={15}/>Отменить оценку</button>}</footer>

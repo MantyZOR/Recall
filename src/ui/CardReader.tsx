@@ -5,6 +5,7 @@ import { attentionByCard } from '../domain/attention';
 import { resolveAttention } from '../domain/actions';
 import { clozeDisplay } from '../domain/markdown';
 import { Markdown } from './Markdown';
+import {ChoiceOptions} from './ChoiceOptions';
 import { Button, Dialog, Empty } from './common';
 
 type Props={s:Snapshot;ids:string[];initialId?:string;onClose:()=>void;notify:(message:string,error?:boolean)=>void};
@@ -37,6 +38,7 @@ export function CardReader({s,ids,initialId,onClose,notify}:Props){
     <div className="card-reader-meta"><span style={{color:deck?.color}}>{deck?.name||'Колода в корзине'}</span>{needsAttention&&<span className="attention-label">Рассмотреть</span>}</div>
     {card.title&&<h3>{card.title}</h3>}
     <Markdown>{card.type==='cloze'?clozeDisplay(card.front,card.clozeIndex||1,true):card.front}</Markdown>
+    {card.type==='choice'&&<ChoiceOptions options={card.options||[]} readOnly/>}
     {card.back&&<div className="card-reader-answer"><Markdown>{card.back}</Markdown></div>}
     {card.notes&&<div className="card-reader-notes"><span className="eyebrow">ПОЯСНЕНИЕ</span><Markdown>{card.notes}</Markdown></div>}
     {card.type==='input'&&card.aliases.length>0&&<p className="card-reader-aliases">Другие варианты ответа: {card.aliases.join(' · ')}</p>}
