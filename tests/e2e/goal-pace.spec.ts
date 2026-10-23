@@ -33,6 +33,25 @@ async function createGoal(page:Page,name='Два дня'){
  const dialog=page.getByRole('dialog');await dialog.getByLabel('Название',{exact:true}).fill(name);await chooseTomorrow(page);return dialog;
 }
 
+for(const mobile of [false,true])test(`defaults a new goal to today and preserves a chosen future date (${mobile?'phone':'desktop'})`,async({browser})=>{
+ const context=await browser.newContext(mobile?{...devices['iPhone 12 Pro Max'],defaultBrowserType:undefined} as any:{}),page=await context.newPage();
+ try{
+  // Moscow is already in November while UTC is still in October.
+  await page.clock.setFixedTime(new Date('2026-10-31T22:30:00Z'));
+  await boot(page,1);await nav(page,'Цели');await page.getByRole('button',{name:'Добавить цель',exact:true}).click();
+  const dialog=page.getByRole('dialog'),date=dialog.getByLabel('Дата',{exact:true}),calendar=dialog.getByRole('group',{name:'Выбор даты'});
+  await expect(date).toContainText('1 ноября 2026');await date.click();
+  await expect(calendar.getByRole('combobox',{name:'Месяц',exact:true})).toHaveValue('10');
+  await expect(calendar.locator('[data-date="2026-11-01"]')).toHaveAttribute('aria-pressed','true');
+  await calendar.getByRole('button',{name:'Следующий месяц',exact:true}).click();await calendar.locator('[data-date="2026-12-15"]').click();
+  await dialog.getByLabel('Название',{exact:true}).fill('Выбранная дата');await dialog.getByRole('button',{name:'Сохранить цель',exact:true}).click();await expect(dialog).toHaveCount(0);
+  await page.getByRole('button',{name:'Изменить Выбранная дата',exact:true}).click();await expect(date).toContainText('15 декабря 2026');await date.click();
+  await expect(calendar.getByRole('combobox',{name:'Месяц',exact:true})).toHaveValue('11');
+  await expect(calendar.locator('[data-date="2026-12-15"]')).toHaveAttribute('aria-pressed','true');
+  expect((await records(page)).filter(e=>e.kind==='goal.put').at(-1).payload.date).toBe('2026-12-15');
+ }finally{await context.close();}
+});
+
 test('uses automatic and editable goal pace above ordinary limits and persists it offline',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await boot(page);const dialog=await createGoal(page);

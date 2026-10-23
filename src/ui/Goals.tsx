@@ -5,7 +5,7 @@ import { goalForecast } from '../domain/planner';
 import { entityHeads } from '../domain/reducer';
 import { goalStudyPlan } from '../domain/study-plan';
 import { StudyStatus } from './StudyStatus';
-import { calendarDate, shiftedDate } from '../domain/time';
+import { calendarDate } from '../domain/time';
 import { append } from '../storage/db';
 import { DateField } from './DateField';
 import { Button, PageHeader, Dialog, Empty, Progress, formatDate } from './common';
@@ -51,7 +51,7 @@ export function Goals({s,start,practice,notify}:Props){
  </>;
 }
 function GoalEditor({s,base,onClose,notify}:{s:Snapshot;base?:Goal;onClose:()=>void;notify:Props['notify']}){
- const defaultDate=shiftedDate(calendarDate(Date.now(),s.settings.timeZone),30);
+ const defaultDate=calendarDate(Date.now(),s.settings.timeZone);
  const [g,setG]=useState<Goal>(base||{id:crypto.randomUUID(),name:'',date:defaultDate,minutes:s.settings.minutes,retention:.9,deckIds:s.decks.map(d=>d.id),importance:{},newPerDay:null}),[busy,setBusy]=useState(false);
  const automatic=g.newPerDay===null||g.newPerDay===undefined;
  const f=goalForecast(s,{...g,newPerDay:automatic?null:Math.min(100000,Math.max(0,Math.trunc(g.newPerDay!)))});
