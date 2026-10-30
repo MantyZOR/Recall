@@ -1,0 +1,12 @@
+/* KaTeX owns the layout inside a formula; prose wrapping must not split it. */
+.markdown .katex{word-break:normal;overflow-wrap:normal}
+.markdown :not(.katex-display)>.katex{
+ display:inline-block;vertical-align:middle;max-width:100%;padding:.25em 0;
+ overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;
+}
+.markdown .katex-display{overscroll-behavior-x:contain}
+/* Keep the start of a wide centred display equation reachable when scrolling. */
+.markdown .katex-display>.katex{width:max-content;min-width:100%}
+.markdown .katex,.markdown .katex-display{scrollbar-width:thin;scrollbar-color:var(--primary) var(--side)}
+.markdown .katex::-webkit-scrollbar,.markdown .katex-display::-webkit-scrollbar{height:6px}
+.markdown .katex::-webkit-scrollbar-thumb,.markdown .katex-display::-webkit-scrollbar-thumb{background:var(--primary);border-radius:6px}

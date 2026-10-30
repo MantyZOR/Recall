@@ -5,6 +5,7 @@ import { initMemoryCore } from './domain/fsrs';
 import { identity } from './storage/db';
 import 'katex/dist/katex.min.css';
 import './styles.css';
+import './math.css';
 import './readability.css';
 import './appearance.css';
 import './study-mobile.css';
