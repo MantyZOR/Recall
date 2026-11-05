@@ -1,0 +1,81 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Recall" Width="678" Height="575" MinWidth="575" MinHeight="465" WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True"
+        Background="{DynamicResource CanvasBrush}" Foreground="{DynamicResource InkBrush}">
+  <Window.Resources><!-- RECALL_THEME --></Window.Resources>
+  <Grid Background="{StaticResource CanvasBrush}">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Border Background="{StaticResource BlueBrush}" BorderBrush="#B9CCE5" BorderThickness="0,0,0,1" Padding="24,16">
+      <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <Image x:Name="BrandIcon" Width="40" Height="40" Margin="0,0,12,0" VerticalAlignment="Center"/>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+          <TextBlock Text="Recall" FontSize="28" FontWeight="SemiBold"/>
+          <TextBlock Text="ПК и телефон" Style="{StaticResource MutedText}"/>
+        </StackPanel>
+        <Border x:Name="StatusPlate" Grid.Column="2" Background="{StaticResource LilacBrush}" VerticalAlignment="Center" Padding="11,7" Margin="12,0,0,0">
+          <TextBlock x:Name="Status" Text="Проверяем службу…" Foreground="{StaticResource LilacInk}" FontSize="13" FontWeight="SemiBold" MaxWidth="190"/>
+        </Border>
+      </Grid>
+    </Border>
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="24,18,24,14">
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Border Style="{StaticResource PanelBorder}">
+            <StackPanel>
+              <TextBlock Text="Компьютер" FontSize="17" FontWeight="SemiBold"/>
+              <TextBox x:Name="PcAddress" AutomationProperties.Name="Адрес на компьютере" Text="http://localhost:8787" FontFamily="Consolas" IsReadOnly="True" Margin="0,8,0,11"/>
+              <Button x:Name="OpenPc" Content="Открыть на ПК" Style="{StaticResource PrimaryButton}"/>
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="2" Style="{StaticResource PanelBorder}" Background="#F8F5FC">
+            <StackPanel>
+              <TextBlock Text="Телефон" FontSize="17" FontWeight="SemiBold"/>
+              <TextBox x:Name="PhoneAddress" AutomationProperties.Name="Адрес для телефона" Text="Подключение ещё не настроено" IsReadOnly="True" Margin="0,8,0,11"/>
+              <Button x:Name="ConnectPhone" Content="Подключить телефон" Style="{StaticResource LilacButton}"/>
+            </StackPanel>
+          </Border>
+        </Grid>
+        <Border Style="{StaticResource PanelBorder}" Margin="0,12,0,0">
+          <StackPanel>
+            <TextBlock Text="Локальная служба" Style="{StaticResource SectionLabel}"/>
+            <WrapPanel Margin="0,8,0,0">
+              <Button x:Name="Start" Content="Запустить" Margin="0,0,8,4"/>
+              <Button x:Name="Stop" Content="Остановить" Style="{StaticResource StopButton}" Margin="0,0,8,4"/>
+              <Button x:Name="Update" Content="Проверить обновления" Margin="0,0,0,4"/>
+            </WrapPanel>
+            <TextBlock x:Name="Message" Text="Закрытие окна не останавливает обмен." Style="{StaticResource MutedText}" Margin="0,6,0,0" AutomationProperties.LiveSetting="Polite"/>
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource PanelBorder}" Margin="0,12,0,0" Padding="14,11">
+          <Expander x:Name="Network" Header="Настройка сети">
+            <StackPanel Margin="0,10,0,0">
+              <TextBlock Text="Сетевой адаптер" Style="{StaticResource SectionLabel}"/>
+              <ComboBox x:Name="AddressPicker" Padding="7" Margin="0,7,0,9" DisplayMemberPath="Label"/>
+              <Button x:Name="SetupTls" Content="Настроить адрес и HTTPS" HorizontalAlignment="Left"/>
+              <CheckBox x:Name="LocalNetwork" Content="Доверенные частные сети Windows" IsChecked="True" Margin="0,8,0,0"/>
+              <StackPanel x:Name="PhoneIpOptions" Visibility="Collapsed" Margin="0,2,0,6">
+                <TextBlock Text="IPv4 телефона для публичной сети" Style="{StaticResource MutedText}" Margin="0,0,0,4"/>
+                <TextBox x:Name="PhoneIp" AutomationProperties.Name="IPv4 телефона"/>
+              </StackPanel>
+              <Button x:Name="AllowLan" Content="Разрешить в частной сети" HorizontalAlignment="Left" Margin="0,6,0,0"/>
+              <TextBlock x:Name="NetworkHint" Style="{StaticResource MutedText}" Margin="0,8,0,0"/>
+              <TextBlock x:Name="SetupAddress" Style="{StaticResource MutedText}" Margin="0,5,0,0"/>
+              <WrapPanel Margin="0,8,0,0">
+                <Button x:Name="CopySetup" Content="Копировать адрес настройки" Margin="0,0,8,4"/>
+                <Button x:Name="RestoreHelp" Content="Помощь с телефоном" Margin="0,0,0,4"/>
+              </WrapPanel>
+              <Expander Header="QR для первого открытия" Margin="0,5,0,0">
+                <Image x:Name="SetupQr" Width="144" Height="144" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+              </Expander>
+            </StackPanel>
+          </Expander>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+    <Border Grid.Row="2" Background="{StaticResource PaperBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="24,10">
+      <CheckBox x:Name="Autostart" Content="Запускать службу при входе в Windows"/>
+    </Border>
+  </Grid>
+</Window>

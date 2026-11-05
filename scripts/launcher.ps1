@@ -14,57 +14,18 @@ if ($Background) {
  exit
 }
 Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase
-[xml]$recallXaml = @'
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Recall — запуск" Width="660" Height="820" MinWidth="550" MinHeight="620" WindowStartupLocation="CenterScreen" Background="#F8F8FB" FontFamily="Segoe UI" FontSize="16">
- <Window.Resources>
-  <Style TargetType="Button"><Setter Property="Padding" Value="14,10"/><Setter Property="Margin" Value="0,0,10,8"/><Setter Property="MinHeight" Value="44"/><Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="#D6D2E8"/><Setter Property="Foreground" Value="#2D2940"/><Setter Property="Cursor" Value="Hand"/></Style>
-  <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
-  <Style TargetType="TextBox"><Setter Property="Padding" Value="10"/><Setter Property="BorderBrush" Value="#D6D2E8"/><Setter Property="FontSize" Value="16"/></Style>
- </Window.Resources>
- <DockPanel Margin="24">
-  <StackPanel DockPanel.Dock="Top" Margin="0,0,0,20"><TextBlock Text="Recall" FontSize="32" FontWeight="Bold"/><TextBlock Text="Твоё пространство знаний · компьютер и телефон" Foreground="#706B80" Margin="0,4,0,0"/></StackPanel>
-  <StackPanel DockPanel.Dock="Bottom" Margin="0,16,0,0">
-   <CheckBox x:Name="Autostart" Content="Запускать службу при входе в Windows" Margin="0,0,0,12"/>
-   <TextBlock Text="Закрытие этого окна оставляет службу работать. «Остановить» отключает обмен и освобождает порты. На телефоне можно продолжать учиться офлайн." FontSize="14" Foreground="#706B80"/>
-  </StackPanel>
-  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-   <StackPanel>
-    <Border Background="#EEEDF9" Padding="16" CornerRadius="12" Margin="0,0,0,18"><StackPanel>
-     <TextBlock x:Name="Status" Text="Проверяем службу…" FontWeight="SemiBold" FontSize="18"/>
-     <TextBlock x:Name="Message" Foreground="#706B80" Margin="0,6,0,0" FontSize="14"/>
-    </StackPanel></Border>
-    <TextBlock Text="На компьютере" FontWeight="SemiBold"/>
-    <TextBox x:Name="PcAddress" Text="http://localhost:8787" IsReadOnly="True" Margin="0,8,0,14"/>
-    <WrapPanel><Button x:Name="OpenPc" Content="Открыть на ПК" Background="#5B50CA" Foreground="White"/><Button x:Name="ConnectPhone" Content="Подключить телефон"/></WrapPanel>
-    <WrapPanel><Button x:Name="Start" Content="Запустить службу"/><Button x:Name="Stop" Content="Остановить"/><Button x:Name="Update" Content="Проверить обновления"/></WrapPanel>
-    <Border Background="White" BorderBrush="#E7E5EF" BorderThickness="1" Padding="16" CornerRadius="12" Margin="0,10,0,16"><StackPanel>
-     <TextBlock Text="На телефоне" FontSize="18" FontWeight="SemiBold"/>
-     <TextBox x:Name="PhoneAddress" Text="Подключение ещё не настроено" IsReadOnly="True" Margin="0,8,0,10"/>
-     <TextBlock x:Name="SetupAddress" Foreground="#706B80" FontSize="14"/>
-     <Button x:Name="CopySetup" Content="Копировать адрес настройки телефона" Margin="0,12,0,0"/>
-     <Expander Header="QR для первого открытия (необязательно)" Margin="0,8,0,0"><Image x:Name="SetupQr" Width="144" Height="144" HorizontalAlignment="Left"/></Expander>
-     <TextBlock x:Name="NetworkHint" Foreground="#9A642B" FontSize="14" Margin="0,12,0,0"/>
-    </StackPanel></Border>
-    <Expander x:Name="Network" Header="Настройка сети" Margin="0,0,0,16"><StackPanel Margin="0,12,0,0">
-     <TextBlock Text="Адрес компьютера в домашней сети. Выбирай тот Wi-Fi или кабель, который доступен телефону." FontSize="14" Foreground="#706B80"/>
-     <ComboBox x:Name="AddressPicker" Padding="8" Margin="0,8,0,10" DisplayMemberPath="Label"/>
-     <Button x:Name="SetupTls" Content="Настроить адрес и HTTPS"/>
-     <TextBlock Text="IP телефона для разрешения в брандмауэре Windows" Margin="0,8,0,8"/>
-     <TextBox x:Name="PhoneIp" ToolTip="Например, 192.168.1.233"/>
-     <CheckBox x:Name="LocalNetwork" Content="Доверенные частные сети Windows" IsChecked="True" Margin="0,10,0,0"/>
-     <Button x:Name="AllowLan" Content="Разрешить в частной сети" Margin="0,10,0,8"/>
-     <TextBlock Text="Это нужно один раз: разрешение действует в частной локальной сети при смене Wi-Fi и IP. Для публичной сети можно снять галочку и разрешить только конкретный IP телефона. Windows запросит права администратора." FontSize="14" Foreground="#706B80"/>
-    </StackPanel></Expander>
-    <Expander Header="Если удалил приложение с телефона"><StackPanel Margin="0,12,0,0"><TextBlock Text="1. Добавь Recall на экран телефона ещё раз. Если сертификат сохранился, переустанавливать его не нужно.&#10;&#10;2. На ПК в «Устройствах» отключи прежнее сопряжение и создай новый код.&#10;&#10;3. На телефоне открой новую иконку, свяжи устройства и дождись загрузки карточек с ПК. Для ещё не переданных изменений нужна сохранённая копия." FontSize="14"/><Button x:Name="RestoreHelp" Content="Открыть инструкцию" Margin="0,12,0,0"/></StackPanel></Expander>
-   </StackPanel>
-  </ScrollViewer>
- </DockPanel>
-</Window>
-'@
-$recallWindow = [Windows.Markup.XamlReader]::Load([Xml.XmlNodeReader]::new($recallXaml))
+$recallXaml=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'recall-launcher.xaml') -Raw -Encoding UTF8
+$recallTheme=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'recall-windows-theme.xaml') -Raw -Encoding UTF8
+$recallWindow=[Windows.Markup.XamlReader]::Parse($recallXaml.Replace('<!-- RECALL_THEME -->',$recallTheme))
 $recallControls = @{}
-foreach ($recallName in @('Status','Message','PcAddress','PhoneAddress','OpenPc','ConnectPhone','Start','Stop','Update','Network','SetupQr','SetupAddress','CopySetup','NetworkHint','AddressPicker','SetupTls','PhoneIp','AllowLan','LocalNetwork','RestoreHelp','Autostart')) { $recallControls[$recallName]=$recallWindow.FindName($recallName) }
-if (Test-Path -LiteralPath (Join-Path $recallRoot 'public\icon-192.png')) { $recallWindow.Icon=[Windows.Media.Imaging.BitmapFrame]::Create([Uri](Join-Path $recallRoot 'public\icon-192.png')) }
+foreach ($recallName in @('BrandIcon','StatusPlate','Status','Message','PcAddress','PhoneAddress','OpenPc','ConnectPhone','Start','Stop','Update','Network','SetupQr','SetupAddress','CopySetup','NetworkHint','AddressPicker','SetupTls','PhoneIpOptions','PhoneIp','AllowLan','LocalNetwork','RestoreHelp','Autostart')) { $recallControls[$recallName]=$recallWindow.FindName($recallName) }
+$recallIconPath=Join-Path $recallRoot 'public\icon-192.png'
+if (Test-Path -LiteralPath $recallIconPath) {
+ $recallIconStream=[IO.File]::OpenRead($recallIconPath)
+ try { $recallWindow.Icon=[Windows.Media.Imaging.BitmapFrame]::Create($recallIconStream,'None','OnLoad') }
+ finally { $recallIconStream.Dispose() }
+ $recallControls.BrandIcon.Source=$recallWindow.Icon
+}
 $script:recallJob=$null; $script:recallSetupOrigin=$null; $script:recallSelectedAddress=$null; $script:recallChangingStartup=$false
 function Show-RecallMessage([string]$text) { $recallControls.Message.Text=$text }
 function Open-RecallUrl([string]$url) {
@@ -119,6 +80,9 @@ function Update-RecallHealth {
   $recallOurs=$recallHealth.ok -and $recallHealth.serverId -eq $recallControl.serverId
  } catch {}
  $recallControls.Status.Text=if($recallOurs){'Служба работает'}elseif($recallFound){'Порт занят другой копией Recall'}else{'Служба остановлена'}
+ $recallTone=if($recallOurs){'Blue'}elseif($recallFound){'Lilac'}else{'Rose'}
+ $recallControls.StatusPlate.Background=$recallWindow.FindResource($recallTone+'Brush')
+ $recallControls.Status.Foreground=$recallWindow.FindResource($recallTone+'Ink')
  $recallControls.OpenPc.IsEnabled=$recallOurs; $recallControls.ConnectPhone.IsEnabled=$recallOurs
  $recallControls.Stop.IsEnabled=$recallOurs; $recallControls.Start.IsEnabled=-not $recallFound
  $recallControls.CopySetup.IsEnabled=$recallOurs -and [bool]$script:recallSetupOrigin
@@ -149,6 +113,12 @@ $recallControls.SetupTls.Add_Click({
  }
  Start-RecallJob 'powershell.exe' @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'stop.ps1')) 'stop-for-tls'
 })
+$recallNetworkMode={
+ $recallControls.PhoneIpOptions.Visibility=if($recallControls.LocalNetwork.IsChecked){'Collapsed'}else{'Visible'}
+ $recallControls.AllowLan.Content=if($recallControls.LocalNetwork.IsChecked){'Разрешить в частной сети'}else{'Разрешить этому телефону'}
+}
+$recallControls.LocalNetwork.Add_Checked($recallNetworkMode)
+$recallControls.LocalNetwork.Add_Unchecked($recallNetworkMode)
 $recallControls.AllowLan.Add_Click({
  if ($recallControls.LocalNetwork.IsChecked) { Start-RecallJob 'powershell.exe' @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'allow-lan.ps1'),'-LocalNetwork') 'lan';return }
  $recallIp=$recallControls.PhoneIp.Text.Trim()
@@ -168,7 +138,7 @@ $recallTimer.Add_Tick({
   if($script:recallJob -and $script:recallJob.Process.HasExited -and $script:recallJob.Out.IsCompleted -and $script:recallJob.Err.IsCompleted){
    $recallDone=$script:recallJob;$script:recallJob=$null;$recallOutput=$recallDone.Out.Result.Trim()
    if($recallDone.Process.ExitCode -ne 0){if($recallDone.Kind -eq 'start'){try{Show-RecallMessage ($recallOutput|ConvertFrom-Json).error}catch{Show-RecallMessage $recallOutput}}else{Show-RecallMessage ($recallOutput + ' ' + $recallDone.Err.Result).Trim()}}
-   elseif($recallDone.Kind -eq 'start'){$recallInfo=$recallOutput|ConvertFrom-Json;Set-RecallInfo $recallInfo;Show-RecallMessage 'Готово. Открой приложение на ПК или подключи телефон.'}
+   elseif($recallDone.Kind -eq 'start'){$recallInfo=$recallOutput|ConvertFrom-Json;Set-RecallInfo $recallInfo;Show-RecallMessage 'Служба продолжит работать после закрытия окна.'}
    elseif($recallDone.Kind -eq 'stop-for-tls'){Start-RecallJob $recallNode @((Join-Path $PSScriptRoot 'setup-tls.mjs'),'--address',$script:recallSelectedAddress,'--renew') 'tls'}
    elseif($recallDone.Kind -eq 'tls'){Start-RecallService}
    elseif($recallDone.Kind -eq 'check-update'){
@@ -206,10 +176,12 @@ if($SmokeTest){
 if ($RenderPreview) {
  $recallPreviewPath=[IO.Path]::GetFullPath($RenderPreview)
  if(-not $recallPreviewPath.StartsWith($recallRoot + '\',[StringComparison]::OrdinalIgnoreCase)){throw 'Preview must stay in the Recall folder.'}
- if($recallNode){try{$recallPreviewInfo=(& $recallNode (Join-Path $PSScriptRoot 'launch.mjs') --status-only --json --no-browser | Out-String)|ConvertFrom-Json;if($recallPreviewInfo.ready){Set-RecallInfo $recallPreviewInfo;Update-RecallHealth}}catch{}}
- $recallVisual=$recallWindow.Content;$recallVisual.Background=$recallWindow.Background
- $recallVisual.Measure([Windows.Size]::new(660,820));$recallVisual.Arrange([Windows.Rect]::new(0,0,660,820));$recallVisual.UpdateLayout()
- $recallRender=New-Object Windows.Media.Imaging.RenderTargetBitmap(660,820,96,96,[Windows.Media.PixelFormats]::Pbgra32)
+ if($recallNode){try{$recallPreviewInfo=(& $recallNode (Join-Path $PSScriptRoot 'launch.mjs') --status-only --json --no-browser | Out-String)|ConvertFrom-Json;if($recallPreviewInfo.ready){Set-RecallInfo $recallPreviewInfo}}catch{}}
+ Update-RecallHealth
+ $recallVisual=$recallWindow.Content
+ $recallWidth=[int]$recallWindow.Width;$recallHeight=[int]$recallWindow.Height-39
+ $recallVisual.Measure([Windows.Size]::new($recallWidth,$recallHeight));$recallVisual.Arrange([Windows.Rect]::new(0,0,$recallWidth,$recallHeight));$recallVisual.UpdateLayout()
+ $recallRender=New-Object Windows.Media.Imaging.RenderTargetBitmap($recallWidth,$recallHeight,96,96,[Windows.Media.PixelFormats]::Pbgra32)
  $recallRender.Render($recallVisual);$recallEncoder=New-Object Windows.Media.Imaging.PngBitmapEncoder;$recallEncoder.Frames.Add([Windows.Media.Imaging.BitmapFrame]::Create($recallRender))
  $null=[IO.Directory]::CreateDirectory((Split-Path -Parent $recallPreviewPath));$recallFile=[IO.File]::Create($recallPreviewPath);$recallEncoder.Save($recallFile);$recallFile.Close();Write-Output 'Launcher preview rendered.';exit
 }

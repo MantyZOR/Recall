@@ -14,8 +14,8 @@ Flashcards for long-term memory and studying toward a deadline. Learn on your co
 
 ### Quick start
 
-1. Download and run **RecallSetup.exe**. It includes everything needed on Windows.
-2. Open **Recall** from the Start menu → **Открыть на ПК** (Open on PC).
+1. Download **RecallSetup.exe**, run it and choose where to install Recall.
+2. Use the **Recall** desktop shortcut or Start menu, then click **Открыть на ПК** (Open on PC).
 3. To connect a phone on the same network, create a code under **Устройства** (Devices) on the PC and enter it once on the phone.
 
 After setup, your phone works offline. Add each computer once; Recall can find it after its IP changes. Sync works on the local network and does not use a cloud server. [Install, migrate and update](docs/windows-install.md) · [Multi-device setup](docs/local-sync.md).
@@ -50,8 +50,8 @@ The detailed guides are currently in Russian:
 
 ### Быстрый запуск
 
-1. Скачай и запусти **RecallSetup.exe**.
-2. В меню «Пуск» открой **Recall** → **Открыть на ПК**.
+1. Скачай **RecallSetup.exe**, запусти его и выбери папку установки.
+2. Открой **Recall** с рабочего стола или из меню «Пуск» и нажми **Открыть на ПК**.
 3. Для телефона в той же сети создай код в **Устройствах** на ПК и введи его один раз на телефоне.
 
 После первого подключения телефон работает офлайн. ПК и ноутбук добавляются один раз, Recall находит их и после смены IP. Синхронизация идёт в общей сети, без облака. [Установка, перенос и обновление](docs/windows-install.md) · [ПК + ноутбук + телефон](docs/local-sync.md).
