@@ -1,8 +1,8 @@
 ﻿param([switch]$Background,[switch]$NoAutoStart,[switch]$SmokeTest,[string]$RenderPreview='')
 $ErrorActionPreference = 'Stop'
-$recallRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+. (Join-Path $PSScriptRoot 'locations.ps1')
 Set-Location -LiteralPath $recallRoot
-$recallMenuData = if($env:RECALL_DATA_DIR){[IO.Path]::GetFullPath($env:RECALL_DATA_DIR)}else{Join-Path $recallRoot 'data'}
+$recallMenuData = $recallDataDirectory
 $recallMenuPort = if($env:RECALL_PORT){[int]$env:RECALL_PORT}else{8787}
 $recallNode = Join-Path $recallRoot 'runtime\node.exe'
 if (-not (Test-Path -LiteralPath $recallNode)) {
@@ -36,25 +36,24 @@ Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase
     <TextBlock Text="На компьютере" FontWeight="SemiBold"/>
     <TextBox x:Name="PcAddress" Text="http://localhost:8787" IsReadOnly="True" Margin="0,8,0,14"/>
     <WrapPanel><Button x:Name="OpenPc" Content="Открыть на ПК" Background="#5B50CA" Foreground="White"/><Button x:Name="ConnectPhone" Content="Подключить телефон"/></WrapPanel>
-    <WrapPanel><Button x:Name="Start" Content="Запустить службу"/><Button x:Name="Stop" Content="Остановить"/></WrapPanel>
+    <WrapPanel><Button x:Name="Start" Content="Запустить службу"/><Button x:Name="Stop" Content="Остановить"/><Button x:Name="Update" Content="Проверить обновления"/></WrapPanel>
     <Border Background="White" BorderBrush="#E7E5EF" BorderThickness="1" Padding="16" CornerRadius="12" Margin="0,10,0,16"><StackPanel>
      <TextBlock Text="На телефоне" FontSize="18" FontWeight="SemiBold"/>
      <TextBox x:Name="PhoneAddress" Text="Подключение ещё не настроено" IsReadOnly="True" Margin="0,8,0,10"/>
-     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="160"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-      <Image x:Name="SetupQr" Width="144" Height="144" HorizontalAlignment="Left" VerticalAlignment="Top"/>
-      <StackPanel Grid.Column="1"><TextBlock Text="Сканируй QR камерой телефона" FontWeight="SemiBold"/><TextBlock Text="Откроются шаги для iPhone и Android: сертификат, установка и связывание с ПК." Margin="0,8,0,0" Foreground="#706B80" FontSize="14"/><Button x:Name="CopySetup" Content="Копировать адрес" Margin="0,12,0,0"/></StackPanel>
-     </Grid>
+     <TextBlock x:Name="SetupAddress" Foreground="#706B80" FontSize="14"/>
+     <Button x:Name="CopySetup" Content="Копировать адрес настройки телефона" Margin="0,12,0,0"/>
+     <Expander Header="QR для первого открытия (необязательно)" Margin="0,8,0,0"><Image x:Name="SetupQr" Width="144" Height="144" HorizontalAlignment="Left"/></Expander>
      <TextBlock x:Name="NetworkHint" Foreground="#9A642B" FontSize="14" Margin="0,12,0,0"/>
     </StackPanel></Border>
-    <Expander Header="Настройка сети" Margin="0,0,0,16"><StackPanel Margin="0,12,0,0">
+    <Expander x:Name="Network" Header="Настройка сети" Margin="0,0,0,16"><StackPanel Margin="0,12,0,0">
      <TextBlock Text="Адрес компьютера в домашней сети. Выбирай тот Wi-Fi или кабель, который доступен телефону." FontSize="14" Foreground="#706B80"/>
      <ComboBox x:Name="AddressPicker" Padding="8" Margin="0,8,0,10" DisplayMemberPath="Label"/>
      <Button x:Name="SetupTls" Content="Настроить адрес и HTTPS"/>
      <TextBlock Text="IP телефона для разрешения в брандмауэре Windows" Margin="0,8,0,8"/>
      <TextBox x:Name="PhoneIp" ToolTip="Например, 192.168.1.233"/>
-     <CheckBox x:Name="LocalNetwork" Content="Несколько устройств в доверенных частных сетях" Margin="0,10,0,0"/>
-     <Button x:Name="AllowLan" Content="Разрешить телефон в сети" Margin="0,10,0,8"/>
-     <TextBlock Text="Для нескольких устройств включи переключатель: доступ будет разрешён только в частных сетях Windows на выбранном адаптере, включая постоянное имя компьютера. В публичной сети остаётся режим для конкретного IP телефона. Windows запросит права администратора." FontSize="14" Foreground="#706B80"/>
+     <CheckBox x:Name="LocalNetwork" Content="Доверенные частные сети Windows" IsChecked="True" Margin="0,10,0,0"/>
+     <Button x:Name="AllowLan" Content="Разрешить в частной сети" Margin="0,10,0,8"/>
+     <TextBlock Text="Это нужно один раз: разрешение действует в частной локальной сети при смене Wi-Fi и IP. Для публичной сети можно снять галочку и разрешить только конкретный IP телефона. Windows запросит права администратора." FontSize="14" Foreground="#706B80"/>
     </StackPanel></Expander>
     <Expander Header="Если удалил приложение с телефона"><StackPanel Margin="0,12,0,0"><TextBlock Text="1. Добавь Recall на экран телефона ещё раз. Если сертификат сохранился, переустанавливать его не нужно.&#10;&#10;2. На ПК в «Устройствах» отключи прежнее сопряжение и создай новый код.&#10;&#10;3. На телефоне открой новую иконку, свяжи устройства и дождись загрузки карточек с ПК. Для ещё не переданных изменений нужна сохранённая копия." FontSize="14"/><Button x:Name="RestoreHelp" Content="Открыть инструкцию" Margin="0,12,0,0"/></StackPanel></Expander>
    </StackPanel>
@@ -64,7 +63,7 @@ Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase
 '@
 $recallWindow = [Windows.Markup.XamlReader]::Load([Xml.XmlNodeReader]::new($recallXaml))
 $recallControls = @{}
-foreach ($recallName in @('Status','Message','PcAddress','PhoneAddress','OpenPc','ConnectPhone','Start','Stop','SetupQr','CopySetup','NetworkHint','AddressPicker','SetupTls','PhoneIp','AllowLan','LocalNetwork','RestoreHelp','Autostart')) { $recallControls[$recallName]=$recallWindow.FindName($recallName) }
+foreach ($recallName in @('Status','Message','PcAddress','PhoneAddress','OpenPc','ConnectPhone','Start','Stop','Update','Network','SetupQr','SetupAddress','CopySetup','NetworkHint','AddressPicker','SetupTls','PhoneIp','AllowLan','LocalNetwork','RestoreHelp','Autostart')) { $recallControls[$recallName]=$recallWindow.FindName($recallName) }
 if (Test-Path -LiteralPath (Join-Path $recallRoot 'public\icon-192.png')) { $recallWindow.Icon=[Windows.Media.Imaging.BitmapFrame]::Create([Uri](Join-Path $recallRoot 'public\icon-192.png')) }
 $script:recallJob=$null; $script:recallSetupOrigin=$null; $script:recallSelectedAddress=$null; $script:recallChangingStartup=$false
 function Show-RecallMessage([string]$text) { $recallControls.Message.Text=$text }
@@ -93,6 +92,7 @@ function Set-RecallInfo($info) {
  $recallControls.PcAddress.Text=$info.desktopOrigin
  $recallControls.PhoneAddress.Text=if($info.phoneOrigin){$info.phoneOrigin}else{'Подключение ещё не настроено'}
  $script:recallSetupOrigin=$info.setupOrigin
+ $recallControls.SetupAddress.Text=if($info.setupOrigin){'Первое подключение: ' + $info.setupOrigin}else{''}
  if ($info.setupQr) {
   $recallBytes=[Convert]::FromBase64String(($info.setupQr -split ',')[1])
   $recallBitmap=New-Object Windows.Media.Imaging.BitmapImage
@@ -106,7 +106,7 @@ function Set-RecallInfo($info) {
   if ($recallAddress.address -eq $info.address) { $recallControls.AddressPicker.SelectedItem=$recallChoice }
  }
  if ($recallControls.AddressPicker.SelectedIndex -lt 0 -and $recallControls.AddressPicker.Items.Count) { $recallControls.AddressPicker.SelectedIndex=0 }
- $recallControls.NetworkHint.Text=if(-not $info.addressAvailable){'Настроенный IP больше не принадлежит этому ПК. Выбери новый адрес в настройке сети; перед сменой сохрани архив на телефоне.'}elseif(-not $info.phoneOrigin){'Для первого подключения телефона раскрой «Настройка сети».'}else{''}
+ $recallControls.NetworkHint.Text=if(-not $info.phoneOrigin){'Для первого подключения телефона раскрой «Настройка сети».'}elseif(-not $info.addressAvailable){'IP изменился. Для обмена Recall использует постоянное имя; новый код не нужен.'}else{'Код подключения создаётся в «Устройствах» на ПК.'}
 }
 function Update-RecallHealth {
  if ($script:recallJob) { return }
@@ -124,16 +124,23 @@ function Update-RecallHealth {
  $recallControls.CopySetup.IsEnabled=$recallOurs -and [bool]$script:recallSetupOrigin
 }
 $recallControls.OpenPc.Add_Click({ Open-RecallUrl $recallControls.PcAddress.Text })
-$recallControls.ConnectPhone.Add_Click({ Open-RecallUrl ($recallControls.PcAddress.Text + '/?page=devices') })
+$recallControls.ConnectPhone.Add_Click({
+ if(-not $script:recallSetupOrigin){$recallControls.Network.IsExpanded=$true;Show-RecallMessage 'Выбери адрес сети и нажми «Настроить адрес и HTTPS». Затем разреши Recall в частной сети.';return}
+ Open-RecallUrl ($recallControls.PcAddress.Text + '/?page=devices')
+})
 $recallControls.CopySetup.Add_Click({ if($script:recallSetupOrigin){[Windows.Clipboard]::SetText($script:recallSetupOrigin);Show-RecallMessage 'Адрес страницы подключения скопирован.'} })
 $recallControls.RestoreHelp.Add_Click({ if($script:recallSetupOrigin){Open-RecallUrl $script:recallSetupOrigin}else{Open-RecallUrl ($recallControls.PcAddress.Text + '/?page=devices')} })
 $recallControls.Start.Add_Click({ Start-RecallService })
 $recallControls.Stop.Add_Click({ Start-RecallJob 'powershell.exe' @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'stop.ps1')) 'stop' })
+$recallControls.Update.Add_Click({
+ if(-not $recallInstalled){Open-RecallUrl 'https://github.com/MantyZOR/Recall/releases/latest';return}
+ if($recallNode){Start-RecallJob $recallNode @((Join-Path $PSScriptRoot 'update.mjs')) 'check-update'}
+})
 $recallControls.SetupTls.Add_Click({
  $recallChoice=$recallControls.AddressPicker.SelectedItem
  if(-not $recallChoice -or -not $recallNode){Show-RecallMessage 'Выбери сетевой адрес и проверь Node.js.';return}
  $script:recallSelectedAddress=$recallChoice.Address
- $recallConfigPath=Join-Path $recallRoot 'certs\config.json'
+ $recallConfigPath=Join-Path $recallCertDirectory 'config.json'
  if(Test-Path -LiteralPath $recallConfigPath){
   $recallConfig=Get-Content -Raw -Encoding UTF8 -LiteralPath $recallConfigPath | ConvertFrom-Json
   if($recallConfig.address -ne $script:recallSelectedAddress){
@@ -164,10 +171,23 @@ $recallTimer.Add_Tick({
    elseif($recallDone.Kind -eq 'start'){$recallInfo=$recallOutput|ConvertFrom-Json;Set-RecallInfo $recallInfo;Show-RecallMessage 'Готово. Открой приложение на ПК или подключи телефон.'}
    elseif($recallDone.Kind -eq 'stop-for-tls'){Start-RecallJob $recallNode @((Join-Path $PSScriptRoot 'setup-tls.mjs'),'--address',$script:recallSelectedAddress,'--renew') 'tls'}
    elseif($recallDone.Kind -eq 'tls'){Start-RecallService}
+   elseif($recallDone.Kind -eq 'check-update'){
+    $recallRelease=$recallOutput|ConvertFrom-Json
+    if($recallRelease.available){
+     if([Windows.MessageBox]::Show(('Доступна версия ' + $recallRelease.version + '. Скачать и открыть установщик? Карточки и подключения сохранятся.'),'Recall','YesNo','Question') -eq 'Yes'){
+      Start-RecallJob $recallNode @((Join-Path $PSScriptRoot 'update.mjs'),$recallRelease.tag) 'download-update'
+     }else{Show-RecallMessage 'Обновление отложено.'}
+    }else{Show-RecallMessage 'Установлена актуальная версия Recall.'}
+   }
+   elseif($recallDone.Kind -eq 'download-update'){
+    $recallInstaller=($recallOutput|ConvertFrom-Json).path
+    Start-Process -FilePath $recallInstaller
+    $recallWindow.Close()
+   }
    else{Show-RecallMessage $recallOutput}
    $recallDone.Process.Dispose();Update-RecallHealth
   }
-  foreach($recallBusyName in @('Start','Stop','SetupTls','AllowLan')){if($script:recallJob){$recallControls[$recallBusyName].IsEnabled=$false}else{if($recallBusyName -in @('SetupTls','AllowLan')){$recallControls[$recallBusyName].IsEnabled=$true}}}
+  foreach($recallBusyName in @('Start','Stop','SetupTls','AllowLan','Update')){if($script:recallJob){$recallControls[$recallBusyName].IsEnabled=$false}else{if($recallBusyName -in @('SetupTls','AllowLan','Update')){$recallControls[$recallBusyName].IsEnabled=$true}}}
   if(-not $script:recallJob -and ($script:recallTick++ % 15 -eq 0)){Update-RecallHealth}
  }catch{Show-RecallMessage $_.Exception.Message;$script:recallJob=$null}
 })

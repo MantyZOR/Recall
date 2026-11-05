@@ -13,6 +13,7 @@ export function syncRetry(value?:Partial<SyncRetry>):SyncRetry {
 export interface SyncState {syncing:boolean;error:string;retry:SyncRetry;paused:boolean;}
 interface Options {
  maxAttempts:number;retry:SyncRetry;available:()=>boolean;
+ roaming?:()=>boolean;
  run:(signal:AbortSignal,manual:boolean)=>Promise<void>;persist:(retry:SyncRetry)=>Promise<void>;
  change:(state:SyncState)=>void;
 }
@@ -35,12 +36,22 @@ export class SyncController {
  private clearTimer(){if(this.timer!==undefined)clearTimeout(this.timer);this.timer=undefined;}
  private schedule(delay:number){
   this.clearTimer();
-  if(!this.active||this.running||this.paused||!this.options.available())return;
+  if(!this.active||this.running||!this.options.available()||this.maxAttempts===0)return;
+  if(this.paused){if(this.options.roaming?.())this.timer=setTimeout(()=>this.reconnect(),120000);return;}
   this.timer=setTimeout(()=>{this.timer=undefined;void this.attempt(false);},Math.max(delay,this.retry.failures?this.retry.nextAttemptAt-Date.now():0));
  }
  availabilityChanged(){
   if(!this.options.available()){this.clearTimer();this.controller?.abort();return;}
   this.schedule(1200);
+ }
+ reconnect(){
+  if(!this.active||this.running||this.maxAttempts===0||!this.options.available()||!this.options.roaming?.())return;
+  this.clearTimer();
+  this.timer=setTimeout(()=>{
+   this.timer=undefined;
+   if(!this.options.available()||this.maxAttempts===0)return;
+   this.retry={failures:0,nextAttemptAt:0};this.error='';void this.attempt(true);
+  },900);
  }
  localChange(){if(this.paused)return;if(this.running){this.dirty=true;return;}this.schedule(1200);}
  async configure(maxAttempts:number){

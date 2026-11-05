@@ -2,11 +2,8 @@ import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, existsSync, openSync, closeSync, writeFileSync, readFileSync, unlinkSync, statSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import {applicationRoot as root,dataPath as data,certPath as certs} from '../server/locations.mjs';
 
-const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const data=path.resolve(process.env.RECALL_DATA_DIR||path.join(root,'data'));
-const certs=path.resolve(process.env.RECALL_CERTS_DIR||path.join(root,'certs'));
 const port=Number(process.env.RECALL_PORT||8787),desktopOrigin='http://localhost:'+port;
 const asJson=process.argv.includes('--json'),noBrowser=process.argv.includes('--no-browser');
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -19,9 +16,9 @@ function belongs(status){
 async function describe(status){
  const configFile=path.join(certs,'config.json'),config=existsSync(configFile)?readJson(configFile):null;
  const addresses=Object.entries(networkInterfaces()).flatMap(([name,items])=>(items||[]).filter(i=>i.family==='IPv4'&&!i.internal).map(i=>({name,address:i.address})));
- const setup=config?new URL(config.bootstrapOrigin):null;if(setup)setup.port=String(process.env.RECALL_BOOTSTRAP_PORT||8788);
+ const setup=config?new URL(status.setupOrigin||config.bootstrapOrigin):null;if(setup)setup.port=String(process.env.RECALL_BOOTSTRAP_PORT||8788);
  const setupQr=setup?await (await import('qrcode')).default.toDataURL(setup.origin,{width:192,margin:2}):null;
- return {ready:true,desktopOrigin,phoneOrigin:status.origin||null,setupOrigin:setup?.origin||null,address:config?.address||null,addressAvailable:!config||addresses.some(i=>i.address===config.address),addresses,certificateExpires:config?.expires||null,setupQr};
+ return {ready:true,desktopOrigin,phoneOrigin:status.localOrigin||status.origin||null,setupOrigin:setup?.origin||null,setupFallback:config?new URL(config.bootstrapOrigin).origin:null,address:config?.address||null,addressAvailable:!config||addresses.some(i=>i.address===config.address),addresses,certificateExpires:config?.expires||null,setupQr};
 }
 async function start(){
  if(Number(process.versions.node.split('.')[0])<24)throw Error('Нужен Node.js 24 или новее.');

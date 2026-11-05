@@ -2,8 +2,7 @@ import {db,getMeta,setMeta,identity,merge} from './db';
 import {cursorOf,assetIds} from '../domain/protocol.mjs';
 import {compareEvents} from '../domain/reducer';
 import type {Connection,Operation,Attachment} from '../domain/types';
-import {connections,connectionOrigin,localServerOrigin,saveConnection,type SyncReport} from './connections';
-import {devicePreferences} from './sync-policy';
+import {advertisedLocalOrigin,connections,connectionOrigin,localServerOrigin,saveConnection,updateConnection,type SyncReport} from './connections';
 
 function requestSignal(timeout:number,signal?:AbortSignal){return signal?AbortSignal.any([signal,AbortSignal.timeout(timeout)]):AbortSignal.timeout(timeout);}
 function endpoint(connection:Connection|undefined,route:string){
@@ -30,58 +29,76 @@ export async function pairPhone(secret:string){return pairServer(location.origin
 export async function pairServer(address:string,secret:string,name=''){
  const origin=localServerOrigin(address),who=await identity();
  const connection=await api<Connection>('pair/accept',{secret:secret.trim(),deviceId:who.id,name:who.name},undefined,undefined,{origin,token:'',serverId:'',role:'phone',at:Date.now()});
- await saveConnection({...connection,origin,name:name.trim()||origin});await setMeta('pairSecret','');
+ await saveConnection({...connection,origin,localOrigin:advertisedLocalOrigin(connection.localOrigin),name:name.trim()||connection.name||origin});await setMeta('pairSecret','');
+}
+type Health={serverId:string;localOrigin?:string};
+export async function verifyServerOrigin(origin:string,serverId:string,signal?:AbortSignal){
+ const response=await fetch(localServerOrigin(origin)+'/api/health',{signal:requestSignal(2500,signal),redirect:'error',credentials:'omit'});
+ if(!response.ok)throw Error('Компьютер недоступен');
+ const health=await response.json() as Health;
+ if(!serverId||health.serverId!==serverId)throw Error('По этому адресу другая установка Recall. Подключи её отдельно.');
+ return health;
+}
+async function reach(connection:Connection,signal?:AbortSignal){
+ if(connection.role==='desktop'&&connectionOrigin(connection)===location.origin)return connection;
+ const candidates=[...new Set([advertisedLocalOrigin(connection.localOrigin),connectionOrigin(connection)].filter((v):v is string=>Boolean(v)))];
+ let problem:unknown;
+ for(const origin of candidates){
+  try{
+   const health=await verifyServerOrigin(origin,connection.serverId,signal);
+   const stable=advertisedLocalOrigin(health.localOrigin);
+   if(stable&&stable!==connection.localOrigin){connection.localOrigin=stable;await updateConnection(connection,{localOrigin:stable});}
+   return {...connection,origin};
+  }catch(error){signal?.throwIfAborted();problem=error;}
+ }
+ throw problem||Error('Компьютер недоступен');
 }
 let running:Promise<void>|undefined;
 export function synchronize(signal?:AbortSignal,manual=true){if(running)return running;running=runAll(signal,manual).finally(()=>{running=undefined;});return running;}
 const failureText=(error:unknown)=>error instanceof Error&&['TimeoutError','AbortError','TypeError'].includes(error.name)?'Компьютер недоступен. Проверь службу Recall, сеть, адрес и доверие сертификату.':error instanceof Error?error.message:String(error);
 async function runAll(signal:AbortSignal|undefined,manual:boolean){
  const all=await connections();if(!all.length)throw Error('Сначала добавь компьютер в «Устройствах»');
- const preferences=devicePreferences(await getMeta('devicePreferences')),report:SyncReport={at:Date.now(),synced:[],unavailable:[]},reachable:Connection[]=[];
+ const report:SyncReport={at:Date.now(),synced:[],unavailable:[]},reachable:{connection:Connection;target:Connection}[]=[];
  for(const connection of all){
   signal?.throwIfAborted();const name=connection.name||connectionOrigin(connection);
-  if(!manual&&((connection.failures||0)>=Math.max(1,preferences.syncAttempts)||(connection.nextAttemptAt||0)>Date.now())){report.unavailable.push({name,error:connection.error||'Автопроверка на паузе — нажми «Синхронизировать сейчас»'});continue;}
+  if(!manual&&(connection.nextAttemptAt||0)>Date.now()){report.unavailable.push({name,error:connection.error||'Компьютер сейчас недоступен'});continue;}
   try{
-   if(connection.role!=='desktop'||connectionOrigin(connection)!==location.origin){
-    const response=await fetch(endpoint(connection,'health'),{signal:requestSignal(2500,signal),redirect:'error',credentials:'omit'});if(!response.ok)throw Error('Компьютер недоступен');
-    const health=await response.json();if(health.serverId!==connection.serverId)throw Error('По этому адресу другая установка Recall. Подключи её отдельно.');
-   }
-   await runSync(connection,signal);reachable.push(connection);
+   const target=await reach(connection,signal);await runSync(connection,target,signal);reachable.push({connection,target});
   }catch(error){
    signal?.throwIfAborted();const failures=Math.min(10,(connection.failures||0)+1),text=failureText(error);
-   await saveConnection({...connection,error:text,failures,nextAttemptAt:Date.now()+Math.min(120000,10000*3**(failures-1))});report.unavailable.push({name,error:text});
+   await updateConnection(connection,{error:text,failures,nextAttemptAt:Date.now()+Math.min(120000,10000*3**(failures-1))});report.unavailable.push({name,error:text});
   }
  }
  // Relay changes learned from later services back to earlier ones in this click.
- for(const connection of reachable){
+ for(const {connection,target} of reachable){
   const name=connection.name||connectionOrigin(connection);
-  try{if(reachable.length>1)await runSync(connection,signal);report.synced.push(name);}
-  catch(error){signal?.throwIfAborted();const text=failureText(error);await saveConnection({...connection,error:text,failures:1});report.unavailable.push({name,error:text});}
+  try{if(reachable.length>1)await runSync(connection,target,signal);report.synced.push(name);}
+  catch(error){signal?.throwIfAborted();const text=failureText(error);await updateConnection(connection,{error:text,failures:1});report.unavailable.push({name,error:text});}
  }
  await setMeta('syncReport',report);
  if(!report.synced.length)throw Error(report.unavailable[0]?.error||'Нет доступных компьютеров');
 }
-async function runSync(connection:Connection,signal?:AbortSignal){
- if(!connection.serverId){const status=await api<{serverId:string}>('status',undefined,undefined,signal,connection);connection.serverId=status.serverId;}
+async function runSync(connection:Connection,target:Connection,signal?:AbortSignal){
+ if(!connection.serverId){const status=await api<{serverId:string}>('status',undefined,undefined,signal,target);await updateConnection(connection,{serverId:status.serverId});connection.serverId=status.serverId;}
  let ack=connection.ack||{};
  for(let round=0;round<1000;round++){
   signal?.throwIfAborted();
   const events=(await db.events.toArray()).sort(compareEvents),push=events.filter(e=>e.seq>(ack[e.deviceId]||0)).slice(0,300);
   const ids=assetIds(push) as string[];
-  if(ids.length){const {missing}=await api<{missing:string[]}>('assets/check',{ids},undefined,signal,connection);for(const id of missing){
+  if(ids.length){const {missing}=await api<{missing:string[]}>('assets/check',{ids},undefined,signal,target);for(const id of missing){
    const asset=await db.attachments.get(id);if(!asset)throw Error('Не найдено вложение. Восстанови полный архив.');
-   const response=await fetch(endpoint(connection,'asset/'+id),{method:'PUT',headers:{Authorization:'Bearer '+connection.token,'Content-Type':asset.type,'X-Asset-Name':encodeURIComponent(asset.name)},body:asset.blob,signal:requestSignal(30000,signal),redirect:'error',credentials:'omit'});if(!response.ok)throw Error('Не удалось передать изображение');
+   const response=await fetch(endpoint(target,'asset/'+id),{method:'PUT',headers:{Authorization:'Bearer '+connection.token,'Content-Type':asset.type,'X-Asset-Name':encodeURIComponent(asset.name)},body:asset.blob,signal:requestSignal(30000,signal),redirect:'error',credentials:'omit'});if(!response.ok)throw Error('Не удалось передать изображение');
   }}
-  const result=await api<{events:Operation[];more:boolean;ack:Record<string,number>;assetIds:string[]}>('sync',{events:push,cursor:cursorOf(events)},undefined,signal,connection);
+  const result=await api<{events:Operation[];more:boolean;ack:Record<string,number>;assetIds:string[]}>('sync',{events:push,cursor:cursorOf(events)},undefined,signal,target);
   const assets:Attachment[]=[];
-  for(const id of result.assetIds){if(await db.attachments.get(id))continue;const response=await fetch(endpoint(connection,'asset/'+id),{headers:{Authorization:'Bearer '+connection.token},signal:requestSignal(30000,signal),redirect:'error',credentials:'omit'});if(!response.ok)throw Error('Обмен изображениями прервался');
+  for(const id of result.assetIds){if(await db.attachments.get(id))continue;const response=await fetch(endpoint(target,'asset/'+id),{headers:{Authorization:'Bearer '+connection.token},signal:requestSignal(30000,signal),redirect:'error',credentials:'omit'});if(!response.ok)throw Error('Обмен изображениями прервался');
    const blob=await response.blob(),digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer())),b=>b.toString(16).padStart(2,'0')).join('');if(digest!==id)throw Error('Повреждено изображение при передаче');
    assets.push({id,blob,name:decodeURIComponent(response.headers.get('X-Asset-Name')||'image'),type:blob.type});
   }
   await merge(result.events,assets);ack=result.ack;connection.ack=ack;
-  await saveConnection({...connection,ack});
+  await updateConnection(connection,{ack});
   const stillPushing=events.some(e=>e.seq>(ack[e.deviceId]||0));
-  if(!result.more&&!stillPushing){await api('sync/ack',{cursor:cursorOf(await db.events.toArray())},undefined,signal,connection);Object.assign(connection,{ack,lastSync:Date.now(),error:'',failures:0,nextAttemptAt:0});await saveConnection(connection);return;}
+  if(!result.more&&!stillPushing){await api('sync/ack',{cursor:cursorOf(await db.events.toArray())},undefined,signal,target);await updateConnection(connection,{ack,lastSync:Date.now(),error:'',failures:0,nextAttemptAt:0});return;}
  }
  throw Error('Обмен слишком большой. Продолжи синхронизацию ещё раз.');
 }

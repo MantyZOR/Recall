@@ -14,11 +14,11 @@ Flashcards for long-term memory and studying toward a deadline. Learn on your co
 
 ### Quick start
 
-1. Download **Recall-portable-win-x64.zip** and extract the entire archive.
-2. Open **Recall.exe** → **Открыть на ПК** (Open on PC).
-3. To connect your phone, choose **Подключить телефон** (Connect phone) and follow the QR instructions. Both devices must be on the same local network.
+1. Download and run **RecallSetup.exe**. It includes everything needed on Windows.
+2. Open **Recall** from the Start menu → **Открыть на ПК** (Open on PC).
+3. To connect a phone on the same network, create a code under **Устройства** (Devices) on the PC and enter it once on the phone.
 
-After setup, your phone works without the computer or internet. Add each PC or laptop once, then use **Синхронизировать сейчас** (Sync now) when they share a local network. [Multi-device setup](docs/local-sync.md). The Windows download includes Node.js.
+After setup, your phone works offline. Add each computer once; Recall can find it after its IP changes. Sync works on the local network and does not use a cloud server. [Install, migrate and update](docs/windows-install.md) · [Multi-device setup](docs/local-sync.md).
 
 **Platforms:** Windows 10/11 x64. Tested on iPhone; Android still needs testing on a real device.
 
@@ -50,11 +50,11 @@ The detailed guides are currently in Russian:
 
 ### Быстрый запуск
 
-1. Скачай **Recall-portable-win-x64.zip** и распакуй весь архив.
-2. Открой **Recall.exe** → **Открыть на ПК**.
-3. Для телефона выбери **Подключить телефон** и следуй инструкции по QR. ПК и телефон должны быть в одной сети.
+1. Скачай и запусти **RecallSetup.exe**.
+2. В меню «Пуск» открой **Recall** → **Открыть на ПК**.
+3. Для телефона в той же сети создай код в **Устройствах** на ПК и введи его один раз на телефоне.
 
-После первого подключения телефон работает без компьютера и интернета. ПК и ноутбук добавляются один раз; дальше используй **«Синхронизировать сейчас»** в общей сети. [ПК + ноутбук + телефон](docs/local-sync.md). Устанавливать Node.js отдельно для готовой сборки не требуется.
+После первого подключения телефон работает офлайн. ПК и ноутбук добавляются один раз, Recall находит их и после смены IP. Синхронизация идёт в общей сети, без облака. [Установка, перенос и обновление](docs/windows-install.md) · [ПК + ноутбук + телефон](docs/local-sync.md).
 
 Сборка: Windows 10/11 x64. Работа на iPhone проверена; Android ещё требует проверки на настоящем устройстве.
 

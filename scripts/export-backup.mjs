@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { zipSync, strToU8 } from 'fflate';
 import { validateEvents, assetIds } from '../src/domain/protocol.mjs';
 import { ENGINE_INFO } from '../src/domain/model-info.mjs';
+import {dataPath} from '../server/locations.mjs';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const extensions = {'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif'};
 
 export function exportBackup({snapshotPath, assetsDirectory, outputPath}) {
@@ -58,7 +58,7 @@ export function exportBackup({snapshotPath, assetsDirectory, outputPath}) {
 }
 
 function cli() {
-  const data = path.resolve(process.env.RECALL_DATA_DIR || path.join(root,'data'));
+  const data = dataPath;
   const options = {};
   for (let index=2;index<process.argv.length;index+=2) {
     const key = process.argv[index], value = process.argv[index+1];

@@ -40,22 +40,20 @@ npm version patch --no-git-tag-version
 ```powershell
 npm run build
 npm run build:web
-npm run build:launcher
-npm run package:portable
+npm run package:installer
 npm test
 npm run test:e2e
 ```
 
 - `build` собирает интерфейс, справку и файлы для работы без сети.
 - `build:web` готовит отдельную веб-версию и её офлайн-кэш; она нужна и для браузерных проверок.
-- `build:launcher` создаёт меню **Recall.exe**.
-- `package:portable` создаёт **out/Recall-portable-win-x64.zip** с Node.js и необходимыми зависимостями.
-- `test` проверяет расчёты, данные, службу и уже собранный переносимый пакет.
+- `package:installer` собирает меню, локальную службу с включённым Node.js и готовый **out/RecallSetup.exe**. ZIP в `out` — промежуточный пакет.
+- `test` проверяет расчёты, данные, службу и установку или обновление собранного приложения.
 - `test:e2e` проверяет сценарии в браузере. Запускай эти две проверки последовательно.
 
 Если браузер для тестов ещё не установлен, сначала выполни `npx playwright install chromium`, затем повтори `npm run test:e2e`.
 
-В ZIP не входят личные карточки, базы и сертификаты. Папку готовой сборки в `out` используй для выпуска; своими исходниками управляй в основной папке проекта.
+В установщик не входят личные карточки, базы и сертификаты. Папку готовой сборки в `out` используй для выпуска; своими исходниками управляй в основной папке проекта.
 
 ## 4. Сохранить исходники и поставить метку версии
 
@@ -79,16 +77,16 @@ git push origin $recallTag
 
 `commit` сохраняет изменения, `tag` отмечает код этой версии, две команды `push` отправляют код и метку в GitHub.
 
-## 5. Создать черновик релиза и прикрепить ZIP
+## 5. Создать черновик релиза и прикрепить установщик
 
 В следующей команде замени описание изменений своим текстом:
 
 ```powershell
-gh release create $recallTag .\out\Recall-portable-win-x64.zip --verify-tag --draft --title "Recall $recallVersion" --notes "Обновлена справка и исправлены ошибки"
+gh release create $recallTag .\out\RecallSetup.exe --verify-tag --draft --title "Recall $recallVersion" --notes "Обновлена справка и исправлены ошибки"
 gh release view $recallTag --web
 ```
 
-`create` создаёт черновик и прикрепляет готовый ZIP. `--verify-tag` проверяет, что метка уже отправлена в GitHub. `view --web` открывает страницу для проверки описания и файла. [Описание команды](https://cli.github.com/manual/gh_release_create).
+Команда создаёт черновик и прикрепляет установщик. `--verify-tag` проверяет, что метка уже отправлена в GitHub. `view --web` открывает страницу для проверки описания и файла. [Описание команды](https://cli.github.com/manual/gh_release_create).
 
 ## 6. Опубликовать
 
@@ -97,7 +95,7 @@ gh release edit $recallTag --draft=false --latest
 gh release view $recallTag --web
 ```
 
-Первая команда делает выпуск доступным всем и отмечает его как последний. Вторая открывает опубликованную страницу. Скачай ZIP и проверь запуск в отдельной папке. [Публикация черновика](https://cli.github.com/manual/gh_release_edit).
+Первая команда делает выпуск доступным всем и отмечает его как последний. Вторая открывает опубликованную страницу. Проверь, что доступен RecallSetup.exe и его SHA-256 совпадает с `out/installer-report.json`. [Публикация черновика](https://cli.github.com/manual/gh_release_edit).
 
 Чтобы обновить также веб-страницу для прямого обмена:
 

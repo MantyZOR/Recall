@@ -1,5 +1,6 @@
 import {db,getMeta,setMeta} from './db';
 import type {Connection} from '../domain/types';
+import {isRecallLocalName} from '../domain/lan-pairing.mjs';
 
 // Tokens stay in this device's metadata, never in the replicated study journal.
 export function localServerOrigin(value:string){
@@ -12,25 +13,39 @@ export function localServerOrigin(value:string){
  return url.origin;
 }
 export const connectionOrigin=(value:Connection)=>value.origin||location.origin;
+export const connectionKey=(value:Connection)=>value.serverId||connectionOrigin(value);
+const sameConnection=(a:Connection,b:Connection)=>a.serverId&&b.serverId?a.serverId===b.serverId:connectionOrigin(a)===connectionOrigin(b);
+export function advertisedLocalOrigin(value?:string|null){
+ if(!value)return;
+ try{const url=new URL(localServerOrigin(value));if(url.protocol==='https:'&&isRecallLocalName(url.hostname))return url.origin;}catch{/* Keep the working address if the advertisement is invalid. */}
+}
 export async function connections():Promise<Connection[]>{
  const saved=await getMeta<Connection[]>('syncConnections')||[],primary=await getMeta<Connection>('connection');
- const unique=new Map(saved.map(c=>[connectionOrigin(c),c]));
- if(primary)unique.set(connectionOrigin(primary),primary);
- return [...unique.values()];
+ const unique:Connection[]=[];
+ for(const c of primary?[primary,...saved]:saved)if(!unique.some(existing=>sameConnection(c,existing)))unique.push(c);
+ return unique;
 }
 export async function saveConnection(connection:Connection){
  await db.transaction('rw',db.meta,async()=>{
   const all=await connections(),primary=await getMeta<Connection>('connection'),origin=connectionOrigin(connection);
-  const next={...connection,origin},exists=all.some(c=>connectionOrigin(c)===origin);
-  await setMeta('syncConnections',exists?all.map(c=>connectionOrigin(c)===origin?next:c):[...all,next]);
-  if(!primary||connectionOrigin(primary)===origin)await setMeta('connection',{...connection,origin});
+  const existing=all.find(c=>sameConnection(c,connection));
+  if(existing?.role==='desktop'&&connection.role!=='desktop')throw Error('Этот компьютер уже подключён.');
+  const next={...connection,origin};
+  await setMeta('syncConnections',existing?all.map(c=>sameConnection(c,connection)?next:c):[...all,next]);
+  if(!primary||sameConnection(primary,connection)||connection.role==='desktop'&&origin===location.origin)await setMeta('connection',next);
  });
 }
-export async function forgetConnection(origin:string){
+export async function updateConnection(connection:Connection,progress:Partial<Connection>){
  await db.transaction('rw',db.meta,async()=>{
-  const all=(await connections()).filter(c=>connectionOrigin(c)!==origin),primary=await getMeta<Connection>('connection');
+  const current=(await connections()).find(c=>sameConnection(c,connection)&&c.token===connection.token);
+  if(current)await saveConnection({...current,...progress});
+ });
+}
+export async function forgetConnection(connection:Connection){
+ await db.transaction('rw',db.meta,async()=>{
+  const all=(await connections()).filter(c=>!sameConnection(c,connection)),primary=await getMeta<Connection>('connection');
   await setMeta('syncConnections',all);
-  if(primary&&connectionOrigin(primary)===origin){if(all[0])await setMeta('connection',all[0]);else await db.meta.delete('connection');}
+  if(primary&&sameConnection(primary,connection)){if(all[0])await setMeta('connection',all[0]);else await db.meta.delete('connection');}
  });
 }
 export interface SyncReport {at:number;synced:string[];unavailable:{name:string;error:string}[];}

@@ -2,6 +2,13 @@ import { beforeEach, afterEach, test, expect, vi } from 'vitest';
 import { SyncController, devicePreferences, syncRetry, type SyncState, type SyncRetry } from '../../src/storage/sync-policy';
 beforeEach(()=>{vi.useFakeTimers();vi.setSystemTime(new Date('2026-10-04T10:00:00Z'));});
 afterEach(()=>vi.useRealTimers());
+test('a phone resumes on a new network after failures, while manual-only stays manual',async()=>{
+ const run=vi.fn(async()=>{}),saved:SyncRetry[]=[];
+ const controller=new SyncController({maxAttempts:3,retry:{failures:3,nextAttemptAt:Date.now()+120000},roaming:()=>true,available:()=>true,run,persist:async retry=>{saved.push(retry);},change:()=>{}});
+ controller.start();await vi.advanceTimersByTimeAsync(1000);expect(run).not.toHaveBeenCalled();
+ controller.reconnect();await vi.advanceTimersByTimeAsync(1000);expect(run).toHaveBeenCalledTimes(1);expect(saved.at(-1)?.failures).toBe(0);
+ await controller.configure(0);controller.reconnect();await vi.advanceTimersByTimeAsync(600000);expect(run).toHaveBeenCalledTimes(1);controller.dispose();
+});
 function setup({limit=3,retry=syncRetry(),run=vi.fn(async()=>{throw new TypeError('Network unavailable');})}:{limit?:number;retry?:SyncRetry;run?:ReturnType<typeof vi.fn>}={}){
  let available=true,state:SyncState;
  const saved:SyncRetry[]=[];

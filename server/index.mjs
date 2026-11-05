@@ -5,13 +5,13 @@ import { serveLocalName,localAddresses } from './local-name.mjs';
 import https from 'node:https';
 import {spawnSync} from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
+import {hostname} from 'node:os';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, createReadStream, unlinkSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { EventSchema, canonical, cursorOf, assetIds } from '../src/domain/protocol.mjs';
-const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const data=path.resolve(process.env.RECALL_DATA_DIR||path.join(root,'data'));
+import {readLanCode} from '../src/domain/lan-pairing.mjs';
+import {applicationRoot as root,dataPath as data,certPath as certDirectory} from './locations.mjs';
 mkdirSync(data,{recursive:true});mkdirSync(path.join(data,'assets'),{recursive:true});mkdirSync(path.join(data,'backups'),{recursive:true});
 const db=new DatabaseSync(path.join(data,'recall.sqlite'));
 db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,device TEXT NOT NULL,seq INTEGER NOT NULL,clock INTEGER NOT NULL,json TEXT NOT NULL,UNIQUE(device,seq)); CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,name TEXT NOT NULL,role TEXT NOT NULL,tokenHash TEXT NOT NULL,lastSeen INTEGER NOT NULL,cursorJson TEXT NOT NULL DEFAULT \'{}\',lastSync INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS assets(id TEXT PRIMARY KEY,name TEXT NOT NULL,type TEXT NOT NULL,size INTEGER NOT NULL);');
@@ -21,10 +21,9 @@ const control=existsSync(controlPath)?JSON.parse(readFileSync(controlPath,'utf8'
 if(!existsSync(controlPath))writeFileSync(controlPath,JSON.stringify(control),{mode:0o600});
 const hash=v=>createHash('sha256').update(v).digest('hex');
 db.prepare('INSERT OR IGNORE INTO devices(id,name,role,tokenHash,lastSeen) VALUES(?,?,?,?,?)').run(control.desktopId,'Мой компьютер','desktop',hash(control.token),Date.now());
-const certDirectory=path.resolve(process.env.RECALL_CERTS_DIR||path.join(root,'certs'));
 const tlsConfigPath=path.join(certDirectory,'config.json');
 let tlsConfig=!process.argv.includes('--http-only')&&existsSync(tlsConfigPath)?JSON.parse(readFileSync(tlsConfigPath,'utf8').replace(/^\uFEFF/,'')):null;
-if(tlsConfig&&!tlsConfig.localName){
+if(tlsConfig&&(!tlsConfig.localName||!tlsConfig.joinName||Date.parse(tlsConfig.expires)<Date.now()+7*86400000)){
  const updated=spawnSync(process.execPath,[path.join(root,'scripts/setup-tls.mjs'),'--address',tlsConfig.address,'--renew'],{env:{...process.env,RECALL_CERTS_DIR:certDirectory},windowsHide:true,encoding:'utf8',timeout:30000});
  if(updated.status===0)tlsConfig=JSON.parse(readFileSync(tlsConfigPath,'utf8'));
  else console.warn('Постоянное имя Recall пока не настроено; существующий IP-адрес сохранён.');
@@ -36,13 +35,16 @@ const publicOrigin=origin?.origin||null,bootstrapOrigin=tlsConfig?new URL(tlsCon
 const allowedHosts=new Set(['localhost:'+port,'127.0.0.1:'+port,...(tlsConfig?['localhost:'+tlsPort,'127.0.0.1:'+tlsPort,origin.host]:[])]);
 const allowedOrigins=new Set([...allowedHosts].map(h=>(h.endsWith(':'+tlsPort)?'https://':'http://')+h));
 const localOrigin=tlsConfig?.localName?'https://'+tlsConfig.localName+':'+tlsPort:null;
-if(localOrigin){allowedHosts.add(new URL(localOrigin).host);allowedOrigins.add(localOrigin);}
-const stopLocalName=localOrigin?serveLocalName(tlsConfig.localName,{addresses:()=>localAddresses(tlsConfig.interfaceName)}):()=>{};
+const joinOrigin=tlsConfig?.joinName?'https://'+tlsConfig.joinName+':'+tlsPort:null;
+const setupOrigin=tlsConfig?.joinName?'http://'+tlsConfig.joinName+':'+bootstrapPort:bootstrapOrigin?.origin;
+for(const hostOrigin of [localOrigin,joinOrigin])if(hostOrigin){allowedHosts.add(new URL(hostOrigin).host);allowedOrigins.add(hostOrigin);}
+const stopLocalName=localOrigin?serveLocalName([tlsConfig.localName,tlsConfig.joinName].filter(Boolean),{addresses:remote=>localAddresses(tlsConfig.interfaceName,remote)}):()=>{};
 process.once('exit',stopLocalName);
 if(process.argv.includes('--dev')){allowedOrigins.add('http://localhost:5173');allowedOrigins.add('http://127.0.0.1:5173');}
 let pairing=null,lastBackup=0;
 const rate=new Map();
-function limited(req){const ip=req.socket.remoteAddress||'';const entry=rate.get(ip)||{at:Date.now(),count:0};if(Date.now()-entry.at>60000){entry.at=Date.now();entry.count=0;}entry.count++;rate.set(ip,entry);return entry.count>20;}
+function limited(req){const ip=req.socket.remoteAddress||'',now=Date.now();if(rate.size>=128){for(const [key,entry] of rate)if(now-entry.at>60000)rate.delete(key);if(rate.size>=128&&!rate.has(ip))return true;}const entry=rate.get(ip)||{at:now,count:0};if(now-entry.at>60000){entry.at=now;entry.count=0;}entry.count++;rate.set(ip,entry);return entry.count>20;}
+const equal=(a,b)=>typeof b==='string'&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 function json(res,status,value){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(value));}
 async function body(req,max=8*1024*1024){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>max)throw Object.assign(new Error('Слишком большой запрос'),{status:413});chunks.push(chunk);}return Buffer.concat(chunks);}
 async function jsonBody(req,max=5*1024*1024){if(!String(req.headers['content-type']||'').startsWith('application/json'))throw Object.assign(new Error('Ожидается JSON'),{status:415});try{return JSON.parse((await body(req,max)).toString('utf8'));}catch(e){if(e.status)throw e;throw Object.assign(new Error('Некорректный JSON'),{status:400});}}
@@ -72,7 +74,7 @@ async function handler(req,res){
  try {
   ensureOrigin(req,res);const url=new URL(req.url,'http://localhost'),route=url.pathname;
   if(req.method==='OPTIONS'&&route.startsWith('/api/')){res.writeHead(204);res.end();return;}
-  if(route==='/api/health'&&req.method==='GET'){json(res,200,{ok:true,serverId:control.serverId,origin:publicOrigin,https:Boolean(tlsConfig),localOrigin});return;}
+  if(route==='/api/health'&&req.method==='GET'){json(res,200,{ok:true,serverId:control.serverId,origin:publicOrigin,https:Boolean(tlsConfig),localOrigin,setupOrigin});return;}
   if(route==='/recall.mobileconfig'&&req.method==='GET'&&tlsConfig){res.writeHead(200,{'Content-Type':'application/x-apple-aspen-config','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(certificateProfile(readFileSync(path.join(certDirectory,'rootCA.cer'))));return;}
   if(route==='/ca.cer'&&req.method==='GET'&&tlsConfig){res.writeHead(200,{'Content-Type':'application/pkix-cert','Content-Disposition':'attachment; filename="Recall-Local-CA.cer"'});res.end(readFileSync(path.join(certDirectory,'rootCA.cer')));return;}
   if(route==='/api/local-bootstrap'&&req.method==='POST'){
@@ -83,22 +85,32 @@ async function handler(req,res){
    if(!req.socket.encrypted)throw Object.assign(new Error('Сопряжение выполняется через защищённый HTTPS-адрес'),{status:403});
    if(limited(req))throw Object.assign(new Error('Слишком много попыток. Подожди минуту.'),{status:429});
    const input=await jsonBody(req,4096),provided=String(input.secret||'');
-   if(!pairing||pairing.expiresAt<Date.now()||!((/^[A-Za-z0-9_-]{32}$/.test(provided)&&timingSafeEqual(Buffer.from(provided),Buffer.from(pairing.secret)))||(/^[A-Z2-9]{8}$/.test(provided.toUpperCase())&&timingSafeEqual(Buffer.from(provided.toUpperCase()),Buffer.from(pairing.code)))))throw Object.assign(new Error('Код сопряжения истёк или неверен'),{status:403});
+   const code=pairing?.lan?readLanCode(provided)?.code||'':provided.toUpperCase();
+   if(!pairing||pairing.expiresAt<Date.now()||!(equal(code,pairing.code)||equal(provided,pairing.secret))){
+    if(pairing?.lan&&++pairing.failures>=8)pairing=null;
+    throw Object.assign(new Error('Код истёк или неверен. Проверь код на компьютере.'),{status:403});
+   }
    if(typeof input.deviceId!=='string'||input.deviceId.length>160||typeof input.name!=='string'||!input.name.trim())throw Object.assign(new Error('Некорректное имя устройства'),{status:400});
    if(input.deviceId===control.desktopId)throw Object.assign(new Error('Нельзя заменить главное подключение компьютера'),{status:409});
    const token=randomBytes(32).toString('base64url');db.prepare("INSERT INTO devices(id,name,role,tokenHash,lastSeen,clientOrigin) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,tokenHash=excluded.tokenHash,clientOrigin=excluded.clientOrigin").run(input.deviceId,input.name.slice(0,80),'phone',hash(token),Date.now(),req.headers.origin||'');pairing=null;
-   json(res,200,{token,serverId:control.serverId,role:'phone',at:Date.now()});return;
+   json(res,200,{token,serverId:control.serverId,role:'phone',at:Date.now(),localOrigin,name:hostname().slice(0,80)});return;
   }
   if(route.startsWith('/api/')){
    const device=authenticate(req);if(!device){json(res,401,{error:'Подключи устройство к этому ПК'});return;}
    db.prepare('UPDATE devices SET lastSeen=? WHERE id=?').run(Date.now(),device.id);
    if(route==='/api/status'&&req.method==='GET'){
     const backups=readdirSync(path.join(data,'backups')).filter(f=>f.endsWith('.sqlite')).sort().reverse();
-    json(res,200,{serverId:control.serverId,origin:publicOrigin,localOrigin,https:Boolean(tlsConfig),bootstrapOrigin:bootstrapOrigin?.origin,fingerprint:tlsConfig?.fingerprint,expires:tlsConfig?.expires,devices:db.prepare('SELECT id,name,role,lastSeen,lastSync,cursorJson FROM devices').all().map(d=>({...d,cursor:JSON.parse(d.cursorJson)})),backupCount:backups.length,lastBackup:backups[0]||null,events:db.prepare('SELECT COUNT(*) AS n FROM events').get().n});return;
+    json(res,200,{serverId:control.serverId,origin:publicOrigin,localOrigin,joinOrigin,https:Boolean(tlsConfig),bootstrapOrigin:setupOrigin,fingerprint:tlsConfig?.fingerprint,expires:tlsConfig?.expires,devices:db.prepare('SELECT id,name,role,lastSeen,lastSync,cursorJson FROM devices').all().map(d=>({...d,cursor:JSON.parse(d.cursorJson)})),backupCount:backups.length,lastBackup:backups[0]||null,events:db.prepare('SELECT COUNT(*) AS n FROM events').get().n});return;
    }
    if(route==='/api/pair/create'&&req.method==='POST'){
     if(device.role!=='desktop')throw Object.assign(new Error('Код создаётся на компьютере'),{status:403});
-    if(!tlsConfig)throw Object.assign(new Error('Сначала настрой локальный HTTPS: npm run setup:tls'),{status:409});
+    if(!tlsConfig)throw Object.assign(new Error('Сначала настрой подключение телефона в меню Recall.'),{status:409});
+    const input=await jsonBody(req,4096);
+    if(input.lan===true){
+     if(!tlsConfig.locator)throw Object.assign(new Error('Постоянное имя не готово. Обнови сертификат в меню Recall.'),{status:409});
+     pairing={lan:true,code:tlsConfig.locator+'-'+String(randomInt(1000000)).padStart(6,'0'),expiresAt:Date.now()+10*60000,failures:0};
+     json(res,200,{code:pairing.code,expiresAt:pairing.expiresAt});return;
+    }
     pairing={secret:randomBytes(24).toString('base64url'),code:Array.from(randomBytes(8),b=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b%32]).join(''),expiresAt:Date.now()+120000};
     json(res,200,{...pairing,url:publicOrigin+'/#pair='+pairing.secret});return;
    }
@@ -155,9 +167,10 @@ const servers=[];
 const server=http.createServer(handler);servers.push(server);server.listen(port,'127.0.0.1',()=>console.log('Recall: http://localhost:'+port));
 if(tlsConfig){const tls=https.createServer({key:readFileSync(path.join(certDirectory,'server-key.pem')),cert:readFileSync(path.join(certDirectory,'server.pem'))},handler);servers.push(tls);tls.listen(tlsPort,'0.0.0.0',()=>console.log('iPhone: '+publicOrigin));}
 if(tlsConfig){
- const setupHtml=await renderSetupPage(publicOrigin);
+ const setupHtml=await renderSetupPage(localOrigin||publicOrigin,publicOrigin);
+ const setupHosts=new Set([bootstrapOrigin.host,...[tlsConfig.localName,tlsConfig.joinName].filter(Boolean).map(name=>name+':'+bootstrapPort)]);
  const certificateServer=http.createServer((req,res)=>{
-  if(req.headers.host!==bootstrapOrigin.host){res.writeHead(403);res.end();return;}
+  if(!setupHosts.has(req.headers.host)){res.writeHead(403);res.end();return;}
   if(req.method!=='GET'&&req.method!=='HEAD'){res.writeHead(405);res.end();return;}
   const route=new URL(req.url,bootstrapOrigin.origin).pathname;
   res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');

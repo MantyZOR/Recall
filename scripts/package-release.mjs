@@ -95,7 +95,7 @@ async function nodeRuntime(){
 async function portablePackage(){
  if(process.platform!=='win32'||process.arch!=='x64')throw Error('This package is built with a Windows x64 Node runtime.');
  const target=fresh('Recall-portable-win-x64','portable-win-x64');
- for(const file of ['dist','server','src/domain/protocol.mjs','Recall.exe','public/icon-192.png','public/icon.ico','scripts/launcher.ps1','scripts/autostart.ps1','scripts/launch.mjs','scripts/stop.ps1','scripts/allow-lan.ps1','scripts/setup-tls.mjs','scripts/export-backup.mjs','Start-Recall.cmd','Stop-Recall.cmd','Setup-iPhone.cmd','Setup-LAN.cmd','Export-Backup.cmd','docs/connection-guide.md','docs/local-sync.md'])copy(file,target);
+ for(const file of ['dist','server','src/domain/protocol.mjs','src/domain/model-info.mjs','src/domain/lan-pairing.mjs','Recall.exe','public/icon-192.png','public/icon.ico','scripts/launcher.ps1','scripts/autostart.ps1','scripts/launch.mjs','scripts/locations.ps1','scripts/stop.ps1','scripts/allow-lan.ps1','scripts/setup-tls.mjs','scripts/export-backup.mjs','scripts/update.mjs','Start-Recall.cmd','Stop-Recall.cmd','Setup-iPhone.cmd','Setup-LAN.cmd','Export-Backup.cmd','docs/connection-guide.md','docs/local-sync.md','docs/windows-install.md'])copy(file,target);
  mkdirSync(path.join(target,'runtime'),{recursive:true});cpSync(await nodeRuntime(),path.join(target,'runtime/node.exe'));
  const licenseCache=guarded(path.join(out,'node-'+bundledNode.version+'-LICENSE.txt'));
  if(!existsSync(licenseCache)){

@@ -22,7 +22,8 @@ describe.skipIf(process.platform!=='win32'||!existsSync(source))('clean portable
  it('starts and stops with its bundled Node, generates fresh HTTPS and serves Android/iPhone setup without a development installation',async()=>{
   const tls=await run(node,['scripts/setup-tls.mjs','--address','127.0.0.1']);expect(tls.code,tls.text).toBe(0);
   const start=await run(node,['scripts/launch.mjs','--json','--no-browser']);expect(start.code,start.text).toBe(0);
-  const status=JSON.parse(start.text);expect(status.phoneOrigin).toBe('https://127.0.0.1:19444');expect(status.setupQr).toMatch(/^data:image\/png;base64,/);
+  const status=JSON.parse(start.text);expect(status.phoneOrigin).toMatch(/^https:\/\/recall-[a-f0-9]{12}\.local:19444$/);
+  expect(status.setupOrigin).toMatch(/^http:\/\/recall-[0-9a-hjkmnp-tv-z]{5}\.local:19888$/);expect(status.setupQr).toMatch(/^data:image\/png;base64,/);
   const html=await (await fetch('http://127.0.0.1:19888/')).text();expect(html).toContain('Android · Chrome');expect(html).toContain('Если удалил приложение');
   const ui=await (await fetch('http://localhost:'+port+'/')).text();expect(ui).toContain('Recall');
   const native=await run('powershell.exe',['-NoProfile','-STA','-ExecutionPolicy','Bypass','-File','scripts/launcher.ps1','-SmokeTest']);expect(native.code,native.text).toBe(0);expect(JSON.parse(native.text).Ready).toBe(true);

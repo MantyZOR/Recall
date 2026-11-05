@@ -34,9 +34,10 @@ export default function App(){
  const reloadForUpdate=useRef(false);
  const notify=useCallback((message:string,error=false)=>setToast({message,error}),[]);
  const s=state?.s||EMPTY;
- const refresh=useCallback(async(signal?:AbortSignal)=>{try{setStatus(await api<ServerStatus>('status',undefined,undefined,signal));}catch{setStatus(null);}},[]);
+ const refresh=useCallback(async(signal?:AbortSignal)=>{try{const own=await getMeta<Connection>('connection');setStatus(own?.role==='desktop'?await api<ServerStatus>('status',undefined,undefined,signal,own):null);}catch{setStatus(null);}},[]);
  const preferences=state?.preferences||devicePreferences();
- const {sync,syncing,error:syncError,paused:syncPaused,retry}=useSync({ready:Boolean(state),connected:Boolean(state?.connection),preferences,initialRetry:state?.retry,eventCount:s.events.length,refresh});
+ const roaming=state?.connection?.role==='phone';
+ const {sync,syncing,error:syncError,paused:syncPaused,retry}=useSync({ready:Boolean(state),connected:Boolean(state?.connection),roaming,preferences,initialRetry:state?.retry,eventCount:s.events.length,refresh});
  useEffect(()=>{const subscription=liveQuery(async()=>({s:materialize(await db.events.toArray()),connection:await getMeta<Connection>('connection'),who:await identity(),preferences:devicePreferences(await getMeta<DevicePreferences>('devicePreferences')),retry:await getMeta<SyncRetry>('syncRetryState'),report:await getMeta<SyncReport>('syncReport')})).subscribe({next:setState,error:e=>setLoadError(String(e))});bootstrap().catch(e=>notify((e as Error).message,true));return()=>subscription.unsubscribe();},[notify]);
  useEffect(()=>{if(toast){const timer=setTimeout(()=>setToast(null),toast.error?9000:4000);return()=>clearTimeout(timer);}},[toast]);
  useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),30000);return()=>clearInterval(timer);},[]);
@@ -61,7 +62,7 @@ export default function App(){
  };
  const pending=state?.connection?s.events.filter(e=>e.seq>(state.connection?.ack?.[e.deviceId]||0)).length:s.events.length;
  const peer=status?.devices.find(d=>d.role==='phone'),peerHasAll=state&&peer?s.events.filter(e=>e.deviceId===state.who.id).every(e=>e.seq<=(peer.cursor[state.who.id]||0)):false;
- const syncHint=!state?.connection?'Добавь компьютер в «Устройствах»':preferences.syncAttempts===0?'Обмен только по кнопке':syncPaused?'Автообмен на паузе · нажми кнопку':syncError?retry.failures+' из '+preferences.syncAttempts+' неудачных попыток':'На твоих устройствах';
+ const syncHint=!state?.connection?'Добавь компьютер в «Устройствах»':preferences.syncAttempts===0?'Обмен только по кнопке':syncPaused?(roaming?'Ищем доступные компьютеры реже':'Автообмен на паузе · нажми кнопку'):syncError?retry.failures+' из '+preferences.syncAttempts+' неудачных попыток':'На твоих устройствах';
  const syncText=syncing?'Передаём изменения':state?.report?.synced.length&&state.report.unavailable.length?'Синхронизировано частично':!state?.connection?'Сохранено здесь':pending?'Сохранено здесь · '+pending+' изменений':state.connection.role==='phone'?'Копия на компьютере':peerHasAll?'Данные получены устройством':'Сохранено на компьютере';
  if(loadError)return <div className="fatal-error"><AlertCircle size={34}/><h1>Не удалось открыть локальную базу</h1><p>{loadError}</p><p>Открой приложение в обычном режиме браузера по постоянному адресу. Сохрани существующие резервные копии перед восстановлением.</p></div>;
  if(!state)return <div className="app-loading"><img src={import.meta.env.BASE_URL+'icon.svg'} alt="" width={54}/><p>Открываем твоё пространство…</p></div>;

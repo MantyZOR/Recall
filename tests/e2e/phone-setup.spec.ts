@@ -2,13 +2,16 @@ import { test,expect,devices } from '@playwright/test';
 test('opens the device page from the launcher, switches installation platforms and explains reinstalling',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/?page=devices');await expect(page.getByRole('heading',{name:'Устройства и синхронизация'})).toBeVisible();
- await page.getByText('Первая настройка HTTPS на телефоне',{exact:true}).click();await expect(page.getByRole('heading',{name:'Первое подключение телефона'})).toBeVisible();
- await page.getByRole('button',{name:'Android',exact:true}).click();
- await expect(page.getByRole('link',{name:'Скачать сертификат для Android'})).toHaveAttribute('href','http://127.0.0.1:17888/ca.crt');
- await expect(page.getByRole('heading',{name:'Добавь приложение из Chrome'})).toBeVisible();
- await page.getByText('Если удалил приложение или сменил телефон',{exact:true}).click();await expect(page.locator('.phone-reinstall')).toContainText('отключи старое сопряжение');
- await page.getByRole('button',{name:'iPhone',exact:true}).click();await expect(page.getByRole('heading',{name:'Включи доверие и добавь приложение'})).toBeVisible();
+ await expect(page.getByText('Сертификат для первого подключения',{exact:true})).toBeVisible();
+ await page.getByText('Сертификат для первого подключения',{exact:true}).click();
+ const setup=page.locator('.phone-setup');
+ await expect(setup.locator('a.local-address')).toHaveAttribute('href',/^http:\/\/recall-[0-9a-hjkmnp-tv-z]{5}\.local:17888$/);
+ await setup.getByRole('button',{name:'Android',exact:true}).click();await expect(setup).toContainText('в Chrome страницу настройки');
+ await setup.getByRole('button',{name:'iPhone',exact:true}).click();await expect(setup).toContainText('включи полное доверие');
  await page.screenshot({path:'test-results/ui/phone-setup-desktop.png',fullPage:true});expect(errors).toEqual([]);
+ await page.goto('http://127.0.0.1:17888/');
+ await page.getByText('Если удалил приложение или сменил телефон',{exact:true}).click();
+ await expect(page.getByText('На ПК возвращаются только данные', {exact:false})).toBeVisible();
 });
 test('serves a usable bootstrap guide on Android and studies cached cards without the PC',async({browser})=>{
  const context=await browser.newContext({...devices['Pixel 7'],viewport:{width:393,height:851},screen:{width:393,height:851}}),page=await context.newPage();
