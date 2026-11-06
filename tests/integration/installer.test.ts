@@ -1,8 +1,9 @@
 import {it,expect} from 'vitest';
-import {spawnSync} from 'node:child_process';
+import {spawn,spawnSync,type ChildProcess} from 'node:child_process';
 import {cpSync,existsSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,rmSync,writeFileSync} from 'node:fs';
 import {createServer} from 'node:net';
 import {DatabaseSync} from 'node:sqlite';
+import {setTimeout as delay} from 'node:timers/promises';
 import path from 'node:path';
 
 const setup=path.resolve('out/RecallSetup.exe'),parent=path.resolve('test-results');
@@ -15,9 +16,26 @@ it.skipIf(process.platform!=='win32'||!existsSync(setup))('imports a portable fo
  const testRoot=mkdtempSync(path.join(parent,'installer-')),portable=path.join(testRoot,'Portable'),root=path.join(testRoot,'Installed Recall'),app=path.join(root,'app'),log=path.join(testRoot,'installer.log');
  const moved=path.join(testRoot,'Recall в новой папке'),movedApp=path.join(moved,'app');
  const port=await availablePort(),env={...process.env,RECALL_PORT:String(port),RECALL_DATA_DIR:undefined,RECALL_CERTS_DIR:undefined};
- function install(dir:string,extra:string[]=[]){
-  const r=spawnSync(setup,['--quiet','--dir',dir,'--no-shortcuts','--log',log,...extra],{env,windowsHide:true,encoding:'utf8',timeout:35000});
+ function install(dir:string,extra:string[]=[],cwd?:string){
+  const r=spawnSync(setup,['--quiet','--dir',dir,'--no-shortcuts','--log',log,...extra],{cwd,env,windowsHide:true,encoding:'utf8',timeout:35000});
   return {status:r.status,error:r.error?.message||'',log:existsSync(log)?readFileSync(log,'utf8'):''};
+ }
+ const children:ChildProcess[]=[];
+ async function holdAppFolder(file:string,args:string[],ready:string,windowsVerbatimArguments=false){
+  const process=spawn(file,args,{cwd:app,env:{...env,RECALL_TEST_READY:ready},windowsVerbatimArguments,windowsHide:true,stdio:'ignore'});
+  children.push(process);
+  let failure:Error|undefined;
+  process.once('error',error=>{failure=error;});
+  for(let attempt=0;attempt<100&&!existsSync(ready)&&!failure&&process.exitCode===null;attempt++)await delay(50);
+  if(failure)throw failure;
+  expect(existsSync(ready)).toBe(true);
+  return process;
+ }
+ async function finishProcess(process:ChildProcess){
+  if(!process.pid||process.exitCode!==null||process.signalCode!==null)return;
+  const exited=new Promise<void>(resolve=>process.once('exit',()=>resolve()));
+  process.kill();
+  await exited;
  }
  const healthy=async()=>{try{return await (await fetch('http://127.0.0.1:'+port+'/api/health',{signal:AbortSignal.timeout(600)})).json();}catch{return null;}};
  let runningApp=app;
@@ -43,10 +61,16 @@ it.skipIf(process.platform!=='win32'||!existsSync(setup))('imports a portable fo
   expect(existsSync(path.join(app,'data'))).toBe(false);
   writeFileSync(path.join(root,'личный.txt'),'сохранить');
   writeFileSync(path.join(app,'added-by-user.txt'),'user file');
-  writeFileSync(path.join(app,'.recall-installed'),'0.5.9');
+  writeFileSync(path.join(app,'.recall-installed'),'0.6.2');
   const started=launch();expect(started.status,started.stdout||started.stderr).toBe(0);
   const before=await healthy();expect(before?.ok).toBe(true);
-  const upgraded=install(root);expect(upgraded.status,JSON.stringify(upgraded)).toBe(0);
+  const script=path.join(app,'scripts/launcher.ps1');
+  writeFileSync(script,"[IO.File]::WriteAllText($env:RECALL_TEST_READY,'ready')\r\nStart-Sleep -Seconds 90\r\n");
+  const powershell=path.join(process.env.WINDIR||'C:\\Windows','System32/WindowsPowerShell/v1.0/powershell.exe');
+  const oldMenu=await holdAppFolder(powershell,['-NoProfile','-STA','-WindowStyle','Hidden','-ExecutionPolicy','Bypass','-File','"'+script+'"'],path.join(testRoot,'menu.ready'),true);
+  // The old menu and the installer both start with the program folder as their working directory.
+  const upgraded=install(root,[],app);expect(upgraded.status,JSON.stringify(upgraded)).toBe(0);
+  await expect.poll(()=>oldMenu.exitCode!==null||oldMenu.signalCode!==null,{timeout:4000}).toBe(true);
   expect(await healthy()).toBeNull();
   expect(readFileSync(path.join(app,'.recall-installed'),'utf8')).toBe(version);
   expect(readFileSync(path.join(root,'личный.txt'),'utf8')).toBe('сохранить');
@@ -54,6 +78,13 @@ it.skipIf(process.platform!=='win32'||!existsSync(setup))('imports a portable fo
   expect(readFileSync(path.join(root,preserved!,'added-by-user.txt'),'utf8')).toBe('user file');
   expect(readFileSync(path.join(root,'certs/rootCA.cer'))).toEqual(cert);
   expect(existsSync(path.join(portable,'data/recall.sqlite'))).toBe(true);
+  const other=await holdAppFolder(process.execPath,['-e',"require('node:fs').writeFileSync(process.env.RECALL_TEST_READY,'ready');setTimeout(()=>{},90000)"],path.join(testRoot,'other.ready'));
+  const blocked=install(root);
+  expect(blocked.status).toBe(1);
+  expect(blocked.log).toContain('Windows удерживает папку');
+  expect(other.exitCode).toBeNull();
+  expect(readFileSync(path.join(app,'.recall-installed'),'utf8')).toBe(version);
+  await finishProcess(other);
   expect(launch().status).toBe(0);expect((await healthy()).serverId).toBe(before.serverId);
   expect(install(path.join(root,'nested'),['--move-from',root]).status).toBe(1);
   expect((await healthy()).serverId).toBe(before.serverId);
@@ -77,6 +108,7 @@ it.skipIf(process.platform!=='win32'||!existsSync(setup))('imports a portable fo
   const occupied=path.join(testRoot,'Unrelated');mkdirSync(occupied);writeFileSync(path.join(occupied,'keep.txt'),'unrelated');
   expect(install(occupied).status).toBe(1);expect(readdirSync(occupied)).toEqual(['keep.txt']);
  }finally{
+  for(const child of children)await finishProcess(child);
   if(await healthy())stop();
   if(testRoot.startsWith(parent+path.sep)&&!lstatSync(testRoot).isSymbolicLink())rmSync(testRoot,{recursive:true});
  }

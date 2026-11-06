@@ -21,7 +21,7 @@ if(!existsSync(csc))throw Error('The Windows .NET Framework compiler is missing.
 const maintenance=path.join(work,'RecallMaintenance.exe'),installer=path.join(out,'RecallSetup.exe');
 function compile(target,args){
  const references=[
-  'System.Windows.Forms.dll','System.IO.Compression.dll','System.Web.Extensions.dll',
+  'System.Windows.Forms.dll','System.IO.Compression.dll','System.Web.Extensions.dll','System.Management.dll',
   path.join(framework,'System.Xaml.dll'),
   ...['PresentationFramework','PresentationCore','WindowsBase'].map(name=>path.join(framework,'WPF',name+'.dll'))
  ].map(file=>'/reference:'+file);

@@ -12,7 +12,7 @@ class RecallLauncher {
    Process.Start(new ProcessStartInfo {
     FileName=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"WindowsPowerShell","v1.0","powershell.exe"),
     Arguments="-NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File \""+script+"\""+background,
-    WorkingDirectory=root,UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden
+    WorkingDirectory=Environment.SystemDirectory,UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden
    });
   } catch(Exception e) { MessageBox.Show(e.Message,"Recall",MessageBoxButtons.OK,MessageBoxIcon.Error); }
  }

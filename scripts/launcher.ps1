@@ -1,7 +1,6 @@
 ﻿param([switch]$Background,[switch]$NoAutoStart,[switch]$SmokeTest,[string]$RenderPreview='')
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'locations.ps1')
-Set-Location -LiteralPath $recallRoot
 $recallMenuData = $recallDataDirectory
 $recallMenuPort = if($env:RECALL_PORT){[int]$env:RECALL_PORT}else{8787}
 $recallNode = Join-Path $recallRoot 'runtime\node.exe'
@@ -151,7 +150,7 @@ $recallTimer.Add_Tick({
    }
    elseif($recallDone.Kind -eq 'download-update'){
     $recallInstaller=($recallOutput|ConvertFrom-Json).path
-    Start-Process -FilePath $recallInstaller
+    Start-Process -FilePath $recallInstaller -WorkingDirectory (Split-Path -Parent $recallInstaller) -ErrorAction Stop
     $recallWindow.Close()
    }
    else{Show-RecallMessage $recallOutput}

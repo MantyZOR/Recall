@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Management;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -29,6 +31,7 @@ static class RecallSetup {
  const string RegistryKey=@"Software\Microsoft\Windows\CurrentVersion\Uninstall\Recall";
  const long MaxUnpacked=256L*1024*1024;
  static readonly string DefaultRoot=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","Recall");
+ static readonly string WindowsPowerShell=Path.Combine(Environment.SystemDirectory,"WindowsPowerShell","v1.0","powershell.exe");
  static readonly JavaScriptSerializer Json=new JavaScriptSerializer{MaxJsonLength=4*1024*1024};
  static string root, source, priorRoot, log;
  static bool quiet, noShortcuts, desktopLink=true;
@@ -39,7 +42,11 @@ static class RecallSetup {
   try {
    if(!Environment.Is64BitOperatingSystem)throw new Exception("Для этой сборки нужна 64-разрядная Windows.");
    quiet=args.Contains("--quiet");noShortcuts=args.Contains("--no-shortcuts");
-   log=Option(args,"--log");source=Option(args,"--from");
+   log=FullPathOption(args,"--log");source=Option(args,"--from");
+#if !MAINTENANCE
+   var preview=FullPathOption(args,"--render-preview");
+#endif
+   Directory.SetCurrentDirectory(Environment.SystemDirectory);
 #if MAINTENANCE
    root=Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
    if(!quiet&&MessageBox.Show("Удалить приложение? Карточки, настройки и сертификаты останутся.","Recall",MessageBoxButton.YesNo,MessageBoxImage.Question)!=MessageBoxResult.Yes)return 0;
@@ -49,7 +56,6 @@ static class RecallSetup {
    var previous=Option(args,"--move-from");
    priorRoot=previous!=null?DirectoryPath(previous):RegisteredRoot();
    root=DirectoryPath(Option(args,"--dir")??priorRoot??DefaultRoot);
-   var preview=Option(args,"--render-preview");
    if(quiet&&preview==null)Install();else return ShowSetup(preview);
 #endif
    return 0;
@@ -60,6 +66,10 @@ static class RecallSetup {
   if(i<0)return null;
   if(i+1==args.Length||args[i+1].StartsWith("--"))throw new Exception("Не указан параметр "+key+".");
   return args[i+1];
+ }
+ static string FullPathOption(string[] args,string key){
+  var value=Option(args,key);
+  return value==null?null:Path.GetFullPath(value);
  }
  static void Report(string message){
   if(log!=null)File.WriteAllText(log,message);
@@ -119,6 +129,20 @@ static class RecallSetup {
   foreach(var entry in Tree(dir)){} // Verify the entire tree before deleting any entry.
   Directory.Delete(dir,true);
  }
+ static bool SharingViolation(IOException error){
+  int code=error.HResult&0xffff;
+  return code==32||code==33;
+ }
+ static void MoveFolder(string from,string to){
+  for(int attempt=0;;attempt++){
+   try{Directory.Move(from,to);return;}
+   catch(IOException error){
+    if(!SharingViolation(error))throw;
+    if(attempt==8)throw new IOException("Windows удерживает папку "+from+". Закрой окно Recall и приложения, открывшие эту папку, затем повтори.",error);
+    Thread.Sleep(200);
+   }
+  }
+ }
  static void RetireProgram(string dir){
   if(!Directory.Exists(dir))return;
   if(!ProgramFolder(dir))throw new Exception("Папка приложения не распознана. Её файлы не изменены.");
@@ -144,7 +168,7 @@ static class RecallSetup {
    }catch(Exception){clean=false;}
   }
   if(clean)DeleteStaging(dir);
-  else Directory.Move(dir,Child(root,"saved-app-"+Guid.NewGuid().ToString("N").Substring(0,10)));
+  else MoveFolder(dir,Child(root,"saved-app-"+Guid.NewGuid().ToString("N").Substring(0,10)));
  }
  static string ArchivePath(string parent,string value){
   var parts=value.Split('/');
@@ -185,13 +209,42 @@ static class RecallSetup {
    catch(AggregateException){return false;}
   }
  }
+ static void CloseInstalledLauncher(string program){
+  // Match the command used by Recall.exe, including already installed versions.
+  var args=" -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File \""+ArchivePath(program,"scripts/launcher.ps1")+"\"";
+  try{
+   using(var self=Process.GetCurrentProcess())
+   using(var search=new ManagementObjectSearcher(@"root\CIMV2",
+    "SELECT ProcessId, ExecutablePath, CommandLine, CreationDate FROM Win32_Process WHERE Name='powershell.exe' AND SessionId="+self.SessionId,
+    new EnumerationOptions{Timeout=TimeSpan.FromSeconds(3)}))
+   using(var results=search.Get()){
+    foreach(ManagementObject entry in results)using(entry){
+     var command=entry["CommandLine"] as string;
+     var created=entry["CreationDate"] as string;
+     if(!SamePath(entry["ExecutablePath"] as string,WindowsPowerShell)||command==null||created==null)continue;
+     if(!command.EndsWith(args,StringComparison.OrdinalIgnoreCase)&&!command.EndsWith(args+" -Background",StringComparison.OrdinalIgnoreCase))continue;
+     try{
+      using(var process=Process.GetProcessById(Convert.ToInt32(entry["ProcessId"]))){
+       if(Math.Abs((process.StartTime-ManagementDateTimeConverter.ToDateTime(created)).TotalSeconds)>1)continue;
+       if(process.CloseMainWindow()&&process.WaitForExit(2000))continue;
+       // A hidden launcher may have no main window. This process runs only Recall's launcher script.
+       if(!process.HasExited)process.Kill();
+       if(!process.WaitForExit(3000))throw new IOException("Закрой окно Recall и повтори обновление.");
+      }
+     }catch(ArgumentException){}catch(InvalidOperationException){}
+     catch(Win32Exception error){throw new IOException("Закрой окно Recall и повтори обновление.",error);}
+    }
+   }
+  }catch(ManagementException){}catch(COMException){} // The folder check still handles an unavailable WMI service.
+ }
  static void StopInstalled(string program){
+  var installed=ProgramFolder(program);
+  if(installed)CloseInstalledLauncher(program);
   if(!PortInUse())return;
-  if(!ProgramFolder(program))throw new Exception("Останови старую службу через её меню Recall.");
+  if(!installed)throw new Exception("Останови старую службу через её меню Recall.");
   var script=ArchivePath(program,"scripts/stop.ps1");CheckPath(script);
   if(!File.Exists(script))throw new Exception("Останови старую службу через её меню Recall.");
-  var ps=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),"WindowsPowerShell","v1.0","powershell.exe");
-  var info=new ProcessStartInfo{FileName=ps,Arguments="-NoProfile -ExecutionPolicy Bypass -File \""+script+"\"",WorkingDirectory=program,UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden};
+  var info=new ProcessStartInfo{FileName=WindowsPowerShell,Arguments="-NoProfile -ExecutionPolicy Bypass -File \""+script+"\"",WorkingDirectory=program,UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden};
   info.EnvironmentVariables.Remove("RECALL_DATA_DIR");info.EnvironmentVariables.Remove("RECALL_CERTS_DIR");
   using(var process=Process.Start(info)){
    if(!process.WaitForExit(20000)||process.ExitCode!=0||PortInUse())throw new Exception("Останови службу в открытом меню Recall и повтори.");
@@ -231,7 +284,11 @@ static class RecallSetup {
  }
  static FileStream Lock(string directory){
   var file=Child(directory,".install.lock");CheckPath(file);
-  return new FileStream(file,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);
+  try{return new FileStream(file,FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None);}
+  catch(IOException error){
+   if(!SharingViolation(error))throw;
+   throw new IOException("Другой установщик уже работает с этой папкой Recall. Дождись его завершения и повтори.",error);
+  }
  }
  static void Install(){
   var moving=MoveFrom(root);
@@ -243,7 +300,7 @@ static class RecallSetup {
   if(!File.Exists(marker))File.WriteAllText(marker,Owner);
   using(var installLock=Lock(root))
   using(var oldLock=moving!=null?Lock(moving):null){
-   if(Directory.Exists(Previous)&&!Directory.Exists(App)&&ProgramFolder(Previous))Directory.Move(Previous,App);
+   if(Directory.Exists(Previous)&&!Directory.Exists(App)&&ProgramFolder(Previous))MoveFolder(Previous,App);
    if(Directory.Exists(App)){
     if(!ProgramFolder(App))throw new Exception("Папка приложения не распознана.");
     if(new Version(File.ReadAllText(Child(App,AppMarker)))>new Version(ReleaseBuild.Version))throw new Exception("Уже установлена более новая версия Recall.");
@@ -259,15 +316,15 @@ static class RecallSetup {
     if(Directory.Exists(App))StopInstalled(App);
     if(PortInUse())throw new Exception("Останови запущенную службу Recall перед установкой.");
     RetireProgram(Previous);
-    if(Directory.Exists(App)){foreach(var entry in Tree(App)){}Directory.Move(App,Previous);}
+    if(Directory.Exists(App)){foreach(var entry in Tree(App)){}MoveFolder(App,Previous);}
     try{
-     Directory.Move(stagedApp,App);
-     foreach(var folder in new[]{"data","certs"})if(Directory.Exists(Child(stage,folder))){var target=Child(root,folder);Directory.Move(Child(stage,folder),target);installedState.Add(folder);}
+     MoveFolder(stagedApp,App);
+     foreach(var folder in new[]{"data","certs"})if(Directory.Exists(Child(stage,folder))){var target=Child(root,folder);MoveFolder(Child(stage,folder),target);installedState.Add(folder);}
      swapped=true;
     }catch{
-     foreach(var folder in installedState)Directory.Move(Child(root,folder),Child(stage,folder));
-     if(Directory.Exists(App)&&ProgramFolder(App))Directory.Move(App,stagedApp);
-     if(Directory.Exists(Previous))Directory.Move(Previous,App);
+     foreach(var folder in installedState)MoveFolder(Child(root,folder),Child(stage,folder));
+     if(Directory.Exists(App)&&ProgramFolder(App))MoveFolder(App,stagedApp);
+     if(Directory.Exists(Previous))MoveFolder(Previous,App);
      throw;
     }
     Register(moving);
