@@ -2,8 +2,8 @@ import { test,expect,devices } from '@playwright/test';
 test('opens the device page from the launcher, switches installation platforms and explains reinstalling',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/?page=devices');await expect(page.getByRole('heading',{name:'Устройства и синхронизация'})).toBeVisible();
- await expect(page.getByText('Сертификат для первого подключения',{exact:true})).toBeVisible();
- await page.getByText('Сертификат для первого подключения',{exact:true}).click();
+ await expect(page.getByText('Первое подключение телефона',{exact:true})).toBeVisible();
+ await page.getByText('Первое подключение телефона',{exact:true}).click();
  const setup=page.locator('.phone-setup');
  await expect(setup.locator('a.local-address')).toHaveAttribute('href',/^http:\/\/recall-[0-9a-hjkmnp-tv-z]{5}\.local:17888$/);
  await setup.getByRole('button',{name:'Android',exact:true}).click();await expect(setup).toContainText('в Chrome страницу настройки');

@@ -4,14 +4,18 @@ test('public web edition boots without a PC, caches its subpath and exposes a co
  try{
   await page.goto('http://127.0.0.1:17890/Recall/?page=devices');await expect(page.getByRole('heading',{name:'Устройства и синхронизация',exact:true})).toBeVisible();
   await page.waitForFunction(()=>Boolean(navigator.serviceWorker.controller));
-  await expect(page.getByText('Подключение через службу на ПК',{exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Создать код подключения',exact:true})).toHaveCount(0);
   const manifest=await (await page.request.get('http://127.0.0.1:17890/Recall/manifest.webmanifest')).json();expect(manifest.scope).toBe('/Recall/');
   await context.setOffline(true);await page.reload();await expect(page.getByRole('heading',{name:'Устройства и синхронизация',exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true);
-  await page.getByText('Дополнительно: разовый прямой обмен',{exact:true}).click();await page.getByRole('button',{name:'Новое подключение',exact:true}).click();await page.getByRole('button',{name:'Создать приглашение',exact:true}).click();await expect(page.getByLabel('Код приглашения',{exact:true})).toHaveValue(/^recall-peer:1:/);
+  await expect(page.getByText(/разовый прямой обмен/i)).toHaveCount(0);
+  await page.getByRole('button',{name:'Добавить компьютер',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Добавить компьютер',exact:true});
+  await dialog.getByLabel('Код подключения',{exact:true}).fill('H7J2K-406281');
+  await expect(dialog.getByRole('button',{name:'Подключить компьютер',exact:true})).toBeEnabled();
+  await expect(dialog.getByLabel(/Адрес Recall/)).not.toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+1)).toBe(true);
-  await expect(page.getByRole('img',{name:'QR прямого обмена'})).toBeVisible();
-  await page.screenshot({path:'test-results/ui/peer-phone.png',fullPage:true});
-  await page.getByRole('dialog').getByRole('button',{name:'Закрыть',exact:true}).click();expect(errors).toEqual([]);
+  await page.screenshot({path:'test-results/ui/sync-code-phone.png',fullPage:true});
+  await dialog.getByRole('button',{name:'Закрыть',exact:true}).click();expect(errors).toEqual([]);
  }finally{await context.close();}
 });

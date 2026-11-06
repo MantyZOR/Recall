@@ -14,7 +14,10 @@ export function localServerOrigin(value:string){
 }
 export const connectionOrigin=(value:Connection)=>value.origin||location.origin;
 export const connectionKey=(value:Connection)=>value.serverId||connectionOrigin(value);
-const sameConnection=(a:Connection,b:Connection)=>a.serverId&&b.serverId?a.serverId===b.serverId:connectionOrigin(a)===connectionOrigin(b);
+function sameConnection(a:Connection,b:Connection){
+ if(a.role==='desktop'&&b.role==='desktop'&&connectionOrigin(a)===connectionOrigin(b))return true;
+ return a.serverId&&b.serverId?a.serverId===b.serverId:connectionOrigin(a)===connectionOrigin(b);
+}
 export function advertisedLocalOrigin(value?:string|null){
  if(!value)return;
  try{const url=new URL(localServerOrigin(value));if(url.protocol==='https:'&&isRecallLocalName(url.hostname))return url.origin;}catch{/* Keep the working address if the advertisement is invalid. */}

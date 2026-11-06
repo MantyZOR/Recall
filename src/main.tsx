@@ -15,7 +15,7 @@ import './study-plan.css';
 import './help-guide.css';
 import './card-reader.css';
 import './activity.css';
-import './peer-devices.css';
+import './devices.css';
 class Boundary extends Component<{children:ReactNode},{error:string}>{
  state={error:''};
  static getDerivedStateFromError(error:Error){return {error:error.message};}

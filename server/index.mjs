@@ -96,7 +96,11 @@ async function handler(req,res){
    json(res,200,{token,serverId:control.serverId,role:'phone',at:Date.now(),localOrigin,name:hostname().slice(0,80)});return;
   }
   if(route.startsWith('/api/')){
-   const device=authenticate(req);if(!device){json(res,401,{error:'Подключи устройство к этому ПК'});return;}
+   const device=authenticate(req);
+   if(!device){
+    const error=route==='/api/pair/create'?'Для создания кода открой Recall через «Открыть на ПК» и повтори.':'В «Устройствах» нажми «Добавить компьютер» и введи код с ПК.';
+    json(res,401,{error});return;
+   }
    db.prepare('UPDATE devices SET lastSeen=? WHERE id=?').run(Date.now(),device.id);
    if(route==='/api/status'&&req.method==='GET'){
     const backups=readdirSync(path.join(data,'backups')).filter(f=>f.endsWith('.sqlite')).sort().reverse();

@@ -52,6 +52,27 @@ async function imageAndReview(page:Page,author:string){return page.evaluate(asyn
 },author);}
 async function asset(page:Page,id:string){return page.evaluate(id=>new Promise<any>(resolve=>{const r=indexedDB.open('recall-local-v1');r.onsuccess=()=>{const db=r.result,q=db.transaction('attachments').objectStore('attachments').get(id);q.onsuccess=()=>{const a=q.result;db.close();resolve(a?{id:a.id,name:a.name,size:a.blob.size}:null);};};}),id);}
 
+test('creates a short code after the PC browser cached access for a previous installation',async({page})=>{
+ await boot(page,'http://localhost:17887/');
+ await expect.poll(async()=>(await meta(page,'connection'))?.role).toBe('desktop');
+ const current=await meta(page,'connection');
+ const stored={...current,serverId:'previous-installation',token:'stale-desktop-token'};
+ const rejected=await page.request.post('/api/pair/create',{headers:{Authorization:'Bearer '+stored.token},data:{lan:true}});
+ expect(rejected.status()).toBe(401);
+ await seed(page,'reauth-'+randomUUID().slice(0,8));
+ const cards=await eventIDs(page);
+ await putMeta(page,'connection',stored);
+ await putMeta(page,'syncConnections',[stored]);
+ const code=await invite(page);
+ expect(readLanCode(code)).not.toBeNull();
+ const saved=await meta(page,'connection');
+ expect(saved.serverId).toBe(current.serverId);
+ expect(saved.token===current.token).toBe(true);
+ expect((await meta(page,'syncConnections')).map((c:any)=>c.serverId)).toEqual([current.serverId]);
+ expect(await eventIDs(page)).toEqual(cards);
+ await expect(page.getByText(/разовый прямой обмен/i)).toHaveCount(0);
+});
+
 test('pairs using one short code, finds a laptop after an address change and carries data home without new codes',async({browser})=>{
  const home=await browser.newContext({ignoreHTTPSErrors:true}),laptop=await browser.newContext({ignoreHTTPSErrors:true}),phone=await browser.newContext({ignoreHTTPSErrors:true,viewport:{width:428,height:926},isMobile:true,hasTouch:true});
  const a=await home.newPage(),b=await laptop.newPage(),p=await phone.newPage(),tag=randomUUID().slice(0,8);let pairRequests=0;

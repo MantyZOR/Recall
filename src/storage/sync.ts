@@ -16,14 +16,42 @@ export async function api<T=Record<string,unknown>>(route:string,payload?:unknow
  const response=await fetch(endpoint(connection,route),{method:method||(payload===undefined?'GET':'POST'),headers,body:payload===undefined?undefined:JSON.stringify(payload),signal:requestSignal(15000,signal),redirect:'error',credentials:'omit'});
  const result=await response.json();if(!response.ok)throw new Error(result.error||'Нет соединения с компьютером');return result;
 }
+export function isLocalDesktop(){
+ return import.meta.env.VITE_PUBLIC_APP!=='true'&&['localhost','127.0.0.1'].includes(location.hostname);
+}
+async function connectLocalDesktop():Promise<Connection>{
+ if(!isLocalDesktop())throw Error('На компьютере открой окно Recall и нажми «Открыть на ПК».');
+ let access:Connection;
+ try{
+  const response=await fetch('/api/local-bootstrap',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:requestSignal(2500),redirect:'error',credentials:'omit'});
+  if(!response.ok)throw Error();
+  access=await response.json() as Connection;
+  if(access.role!=='desktop'||!access.serverId||!access.token)throw Error();
+ }catch{
+  throw Error('Служба Recall недоступна. В окне Recall нажми «Запустить», затем «Открыть на ПК».');
+ }
+ const current=await getMeta<Connection>('connection');
+ const previous=current?.role==='desktop'&&connectionOrigin(current)===location.origin?current:undefined;
+ const sameServer=previous?.serverId===access.serverId;
+ if(sameServer&&previous?.token===access.token)return previous;
+ const connection={...(sameServer?previous:undefined),...access,origin:location.origin,name:previous?.name||'Этот компьютер',error:'',failures:0,nextAttemptAt:0};
+ await saveConnection(connection);
+ return connection;
+}
+let desktopAccess:Promise<Connection>|undefined;
+function localDesktopAccess(){
+ if(!desktopAccess)desktopAccess=connectLocalDesktop().finally(()=>{desktopAccess=undefined;});
+ return desktopAccess;
+}
+export async function desktopApi<T=Record<string,unknown>>(route:string,payload:unknown):Promise<T>{
+ return api<T>(route,payload,undefined,undefined,await localDesktopAccess());
+}
 export async function bootstrap(){
  if(import.meta.env.VITE_PUBLIC_APP==='true')return;
  const hash=new URLSearchParams(location.hash.slice(1)),setup=hash.get('setup'),pair=hash.get('pair');
  if(setup){await saveConnection({token:setup,serverId:'',role:'desktop',at:Date.now(),origin:location.origin});history.replaceState(null,'',location.pathname);return;}
  if(pair){await setMeta('pairSecret',pair);history.replaceState(null,'',location.pathname);}
- if(['localhost','127.0.0.1'].includes(location.hostname)&&!(await connections()).some(c=>connectionOrigin(c)===location.origin)){
-  try{const response=await fetch('/api/local-bootstrap',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:requestSignal(15000),redirect:'error'});if(response.ok)await saveConnection({...await response.json(),origin:location.origin,name:'Этот компьютер'});}catch{/* Offline opening is independent of the PC. */}
- }
+ if(isLocalDesktop())try{await localDesktopAccess();}catch{/* The local library still opens with the service off. */}
 }
 export async function pairPhone(secret:string){return pairServer(location.origin,secret);}
 export async function pairServer(address:string,secret:string,name=''){

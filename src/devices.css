@@ -1,0 +1,31 @@
+.persistent-sync { min-width: 0; margin-bottom: 20px; }
+.persistent-sync p { line-height: 1.65; }
+.device-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.saved-connection {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 16px;
+ padding: 18px 0;
+ border-top: 1px solid var(--line);
+}
+.saved-connection > div:first-child { min-width: 0; }
+.saved-connection strong { overflow-wrap: anywhere; }
+.saved-connection small { display: block; margin-top: 6px; overflow-wrap: anywhere; }
+.sync-result { margin-top: 18px; }
+.connection-form { display: grid; gap: 16px; padding: 24px; overflow: auto; min-height: 0; }
+.connection-form p { margin: 0; line-height: 1.65; }
+.connection-form input { width: 100%; min-width: 0; }
+.persistent-sync .local-address { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+ .device-actions > .button {
+  flex: 1 1 100%;
+  text-align: center;
+  justify-content: center;
+  min-width: 0;
+  white-space: normal;
+ }
+ .saved-connection { align-items: stretch; flex-direction: column; }
+ .saved-connection > .device-actions { width: 100%; }
+ .connection-form { padding: 18px; }
+}

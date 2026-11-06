@@ -69,6 +69,6 @@ npm run package:installer
 
 ## Веб-версия без установки
 
-[Открыть Recall](https://mantyzor.github.io/Recall/) · [Прямой обмен](direct-sync.md). Эта страница содержит только приложение; личные данные остаются в браузере. Ветка `gh-pages` содержит готовый статический сайт, ветка `main` — исходники.
+[Открыть Recall](https://mantyzor.github.io/Recall/) · [Подключить компьютер для синхронизации](local-sync.md). Личные данные остаются в браузере. Ветка `gh-pages` содержит готовый статический сайт, ветка `main` — исходники.
 
 После изменения кода обнови страницу командой `npm run publish:web`. Скрипт пересоберёт веб-версию и отправит только `dist-web` в `gh-pages`. Для первого включения выбери в GitHub Settings → Pages: Deploy from a branch → gh-pages → / (root).

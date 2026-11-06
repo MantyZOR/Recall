@@ -9,7 +9,7 @@ export function PhoneSetup({status}:{status:ServerStatus|null}){
   {setup?<ol className="setup-steps">
    <li>На телефоне открой в {ios?'Safari':'Chrome'} страницу настройки: <a className="local-address" href={setup} target="_blank" rel="noreferrer">{setup}</a>.</li>
    <li>{ios?'Установи профиль и включи полное доверие сертификату этого компьютера. Страница покажет, где это сделать.':'Установи сертификат компьютера по шагам на странице настройки.'}</li>
-   <li>Вернись в свою иконку Recall и введи код подключения. Если иконки ещё нет, добавь её со страницы настройки.</li>
+   <li>Открой Recall с прежней иконки. В разделе «Устройства» нажми «Добавить компьютер» и введи код с ПК. Если иконки ещё нет, добавь её со страницы настройки.</li>
   </ol>:<p>В меню Recall открой «Настройка сети» и нажми «Настроить адрес и HTTPS».</p>}
   {status?.fingerprint&&<details><summary>Проверить отпечаток сертификата</summary><code className="local-address">{status.fingerprint}</code></details>}
  </div>;
